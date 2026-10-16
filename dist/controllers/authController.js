@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
-exports.getRefreshCookieOptions = getRefreshCookieOptions;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const axios_1 = __importDefault(require("axios"));
 const database_1 = require("@/config/database");
@@ -51,90 +50,7 @@ const companyDetailsService = __importStar(require("@/modules/company-details/se
 const oauthIdentity_1 = require("@/utils/oauthIdentity");
 const entitlementsService = __importStar(require("@/modules/entitlements/entitlements.service"));
 const brand_1 = require("@/config/brand");
-const transactionHistory_1 = require("@/utils/transactionHistory");
-const redis_1 = require("@/utils/redis");
-// In-memory grace map fallback (per-process)
-const rotationGraceMap = new Map();
-// Periodic cleanup of expired local grace records every 60 seconds
-setInterval(() => {
-    const now = Date.now();
-    for (const [token, record] of rotationGraceMap.entries()) {
-        if (record.expiresAt < now) {
-            rotationGraceMap.delete(token);
-        }
-    }
-}, 60000);
-// Distributed Shared Grace Helpers across all backend processes/replicas (5-minute window)
-const ROTATION_GRACE_TTL_MS = 300000; // 5 minutes
-const ROTATION_GRACE_TTL_SEC = 300;
-async function getGraceRecord(token) {
-    try {
-        const client = await redis_1.redisService.getClient();
-        const data = await client.get(`auth:grace:${token}`);
-        if (data) {
-            return JSON.parse(data);
-        }
-    }
-    catch {
-        // Redis unavailable, fallback to process-local
-    }
-    const local = rotationGraceMap.get(token);
-    if (local && local.expiresAt > Date.now()) {
-        return local;
-    }
-    return null;
-}
-async function setGraceRecord(token, record) {
-    rotationGraceMap.set(token, record);
-    try {
-        const client = await redis_1.redisService.getClient();
-        await client.set(`auth:grace:${token}`, JSON.stringify(record), { EX: ROTATION_GRACE_TTL_SEC });
-    }
-    catch {
-        // ignore Redis write error
-    }
-}
-async function revokeUserSessions(userId, currentToken) {
-    if (currentToken) {
-        rotationGraceMap.delete(currentToken);
-    }
-    try {
-        const client = await redis_1.redisService.getClient();
-        if (currentToken) {
-            await client.del(`auth:grace:${currentToken}`);
-        }
-        if (userId) {
-            await client.set(`auth:revoked_user:${userId}`, "1", { EX: 300 });
-        }
-    }
-    catch {
-        // ignore
-    }
-}
-async function isUserRevoked(userId) {
-    try {
-        const client = await redis_1.redisService.getClient();
-        const revoked = await client.get(`auth:revoked_user:${userId}`);
-        return !!revoked;
-    }
-    catch {
-        return false;
-    }
-}
-function getRefreshCookieOptions() {
-    const isProd = process.env.NODE_ENV === "production";
-    const options = {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? "none" : "lax",
-        path: "/",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days matching JWT_REFRESH_EXPIRES_IN=7d
-    };
-    if (process.env.COOKIE_DOMAIN && process.env.COOKIE_DOMAIN !== "localhost") {
-        options.domain = process.env.COOKIE_DOMAIN;
-    }
-    return options;
-}
+const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
      * Global login for Chrome Extension
@@ -452,8 +368,14 @@ class AuthController {
                     },
                 });
             });
-            // Set refresh token cookie (httpOnly, secure, scoped)
-            res.cookie("refreshToken", refreshToken, getRefreshCookieOptions());
+            // Set refresh token cookie
+            res.cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
@@ -466,10 +388,11 @@ class AuthController {
             // Fetch onboarding status (raw query — Prisma schema not updated)
             const onboardingRaw = await dbpool_1.default.query("SELECT onboarding_completed FROM tenants WHERE id = $1", [user.tenantId]);
             const onboardingCompleted = onboardingRaw.rows[0]?.onboarding_completed ?? true;
-            // Return user data and access token (refreshToken kept strictly in httpOnly cookie)
+            // Return user data and access token
             const loginResponse = {
                 success: true,
                 accessToken,
+                refreshToken,
                 user: {
                     id: user.id,
                     name: user.name,
@@ -526,129 +449,64 @@ class AuthController {
     }
     /**
      * Refresh access token
-     * Strictly validates session against DB, user/tenant active status, associates rotated tokens for idempotency,
-     * sets HttpOnly cookie, and returns only accessToken (never leaks refreshToken to JavaScript).
      */
     static async refresh(req, res) {
-        let lockKey = null;
-        let lockAcquired = false;
         try {
-            // Candidate comes from httpOnly cookie primarily, with header fallback
-            const candidate = req.cookies?.refreshToken || req.headers["x-refresh-token"];
-            if (!candidate || typeof candidate !== "string" || !candidate.trim()) {
+            // Collect all candidate tokens in order: body first (freshest in-memory), then header, then cookie
+            const rawCandidates = [
+                req.body?.refreshToken,
+                req.headers["x-refresh-token"],
+                req.cookies?.refreshToken,
+            ].filter((t) => typeof t === "string" && t.trim().length > 0);
+            // Deduplicate candidates
+            const candidates = Array.from(new Set(rawCandidates));
+            if (candidates.length === 0) {
                 res.status(401).json({
                     success: false,
                     error: "Refresh token required",
                 });
                 return;
             }
-            const trimmedCandidate = candidate.trim();
-            // 1. Check shared / distributed idempotent rotation grace state
-            // If a concurrent request recently rotated this exact token (within 60s),
-            // return the identical accessToken and re-set the cookie so client state stays consistent.
-            const graceRecord = await getGraceRecord(trimmedCandidate);
-            if (graceRecord && graceRecord.expiresAt > Date.now()) {
-                if (await isUserRevoked(graceRecord.userId)) {
-                    res.status(401).json({
-                        success: false,
-                        error: "Session has been revoked",
-                    });
-                    return;
-                }
-                res.cookie("refreshToken", graceRecord.newRefreshToken, getRefreshCookieOptions());
-                res.status(200).json({
-                    success: true,
-                    accessToken: graceRecord.accessToken,
-                    message: "Token refreshed successfully",
-                });
-                return;
-            }
-            // 2. Validate JWT signature and expiry
-            let decoded;
-            try {
-                decoded = jwt_1.JWTUtils.verifyRefreshToken(trimmedCandidate);
-            }
-            catch {
-                res.status(401).json({
-                    success: false,
-                    error: "Invalid or expired refresh token",
-                });
-                return;
-            }
-            if (!decoded?.userId || !decoded?.tenantId) {
-                res.status(401).json({
-                    success: false,
-                    error: "Malformed refresh token",
-                });
-                return;
-            }
-            // 3. Ensure user was not marked revoked post-logout
-            if (await isUserRevoked(decoded.userId)) {
-                res.status(401).json({
-                    success: false,
-                    error: "Session has been revoked",
-                });
-                return;
-            }
-            // 4. Acquire distributed lock for this token rotation to serialize simultaneous requests across replicas
-            lockKey = `rot_lock:${crypto_1.default.createHash("sha256").update(trimmedCandidate).digest("hex")}`;
-            lockAcquired = await redis_1.redisService.acquireLock(lockKey, 10);
-            if (!lockAcquired) {
-                // Another concurrent request is actively rotating this exact token.
-                // Wait up to 3 seconds for the rotation to complete and grace record to be published.
-                const maxWaitMs = 3000;
-                const intervalMs = 50;
-                const startTime = Date.now();
-                while (Date.now() - startTime < maxWaitMs) {
-                    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-                    const waitingGrace = await getGraceRecord(trimmedCandidate);
-                    if (waitingGrace && waitingGrace.expiresAt > Date.now()) {
-                        if (await isUserRevoked(waitingGrace.userId)) {
-                            res.status(401).json({
-                                success: false,
-                                error: "Session has been revoked",
-                            });
-                            return;
-                        }
-                        res.cookie("refreshToken", waitingGrace.newRefreshToken, getRefreshCookieOptions());
-                        res.status(200).json({
-                            success: true,
-                            accessToken: waitingGrace.accessToken,
-                            message: "Token refreshed successfully",
+            let storedToken = null;
+            let verifiedDecoded = null;
+            let matchedCandidate = null;
+            let fallbackUser = null;
+            // Try each candidate token until we find a match
+            for (const candidate of candidates) {
+                try {
+                    const decoded = jwt_1.JWTUtils.verifyRefreshToken(candidate);
+                    const found = await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
+                        // 1. First try exact unexpired token match
+                        const exact = await client.refreshToken.findFirst({
+                            where: {
+                                token: candidate,
+                                userId: decoded.userId,
+                                expiresAt: { gt: new Date() },
+                            },
+                            include: {
+                                user: {
+                                    include: {
+                                        tenant: true,
+                                        position: {
+                                            select: {
+                                                id: true,
+                                                title: true,
+                                                code: true,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
                         });
-                        return;
-                    }
-                }
-            }
-            // Re-check grace record after acquiring lock (in case concurrent thread finished while we waited)
-            const postLockGrace = await getGraceRecord(trimmedCandidate);
-            if (postLockGrace && postLockGrace.expiresAt > Date.now()) {
-                if (await isUserRevoked(postLockGrace.userId)) {
-                    res.status(401).json({
-                        success: false,
-                        error: "Session has been revoked",
-                    });
-                    return;
-                }
-                res.cookie("refreshToken", postLockGrace.newRefreshToken, getRefreshCookieOptions());
-                res.status(200).json({
-                    success: true,
-                    accessToken: postLockGrace.accessToken,
-                    message: "Token refreshed successfully",
-                });
-                return;
-            }
-            // 5. Strictly validate against the database session/token record
-            // NEVER recover sessions purely on JWT signature validity without DB verification
-            const storedToken = await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-                return await client.refreshToken.findFirst({
-                    where: {
-                        token: trimmedCandidate,
-                        userId: decoded.userId,
-                        expiresAt: { gt: new Date() },
-                    },
-                    include: {
-                        user: {
+                        if (exact)
+                            return exact;
+                        // 2. If exact token was recently rotated or expired, verify user and tenant are still active
+                        const userRecord = await client.user.findFirst({
+                            where: {
+                                id: decoded.userId,
+                                tenantId: decoded.tenantId,
+                                isActive: true,
+                            },
                             include: {
                                 tenant: true,
                                 position: {
@@ -659,28 +517,38 @@ class AuthController {
                                     },
                                 },
                             },
-                        },
-                    },
-                });
-            });
-            if (!storedToken || !storedToken.user) {
-                console.warn(`[AUTH REFRESH 401] Token not found in active tokens. Candidate snippet: ${trimmedCandidate.substring(0, 20)}... UserId: ${decoded.userId}`);
+                        });
+                        if (userRecord && userRecord.tenant.isActive) {
+                            fallbackUser = userRecord;
+                        }
+                        return null;
+                    });
+                    if (found && found.user?.isActive && found.user?.tenant?.isActive) {
+                        storedToken = found;
+                        verifiedDecoded = decoded;
+                        matchedCandidate = candidate;
+                        break;
+                    }
+                    else if (fallbackUser) {
+                        verifiedDecoded = decoded;
+                        matchedCandidate = candidate;
+                        break;
+                    }
+                }
+                catch {
+                    // Token verification failed for this candidate, try next
+                    continue;
+                }
+            }
+            const activeUser = storedToken?.user || fallbackUser;
+            if (!activeUser || !activeUser.isActive || !activeUser.tenant?.isActive) {
                 res.status(401).json({
                     success: false,
-                    error: "Refresh token revoked or expired",
+                    error: "Invalid or expired refresh token",
                 });
                 return;
             }
-            const activeUser = storedToken.user;
-            // 6. Validate user and tenant active status
-            if (!activeUser.isActive || !activeUser.tenant?.isActive) {
-                res.status(401).json({
-                    success: false,
-                    error: "User or tenant account is inactive",
-                });
-                return;
-            }
-            // 7. Generate new token pair
+            // Create auth user object for new token generation
             const authUser = {
                 id: activeUser.id,
                 tenantId: activeUser.tenantId,
@@ -689,17 +557,20 @@ class AuthController {
                 position: activeUser.position?.title || null,
                 name: activeUser.name,
             };
+            // Generate new token pair
             const { accessToken, refreshToken: newRefreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
-            // 8. Record old token in distributed idempotent grace state for 5 minutes (300 seconds)
-            await setGraceRecord(trimmedCandidate, {
-                accessToken,
-                newRefreshToken,
-                userId: activeUser.id,
-                tenantId: activeUser.tenantId,
-                expiresAt: Date.now() + ROTATION_GRACE_TTL_MS,
-            });
-            // 9. Atomic DB rotation: create new token and mark old token for 5-minute grace expiration
-            await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
+            // Rotate refresh token with a 5-minute grace window to protect concurrent tabs / background throttled tabs
+            await database_1.tenantAwarePrisma.withTenant(verifiedDecoded.tenantId, async (client) => {
+                if (storedToken) {
+                    // Keep the previous token valid for 5 minutes grace window so sibling tabs don't fail
+                    await client.refreshToken.updateMany({
+                        where: { id: storedToken.id },
+                        data: {
+                            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute grace window
+                        },
+                    });
+                }
+                // Create the new refresh token
                 await client.refreshToken.create({
                     data: {
                         token: newRefreshToken,
@@ -707,30 +578,26 @@ class AuthController {
                         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
                     },
                 });
-                // Keep old token in DB for the 5-minute grace window so concurrent requests / retries don't fail
-                await client.refreshToken.updateMany({
-                    where: {
-                        token: trimmedCandidate,
-                        userId: activeUser.id,
-                    },
-                    data: {
-                        expiresAt: new Date(Date.now() + ROTATION_GRACE_TTL_MS),
-                    },
-                });
-                // Clean up stale tokens expired over 15 minutes ago
+                // Clean up tokens that expired more than 10 minutes ago
                 await client.refreshToken.deleteMany({
                     where: {
                         userId: activeUser.id,
-                        expiresAt: { lt: new Date(Date.now() - 15 * 60 * 1000) },
+                        expiresAt: { lt: new Date(Date.now() - 10 * 60 * 1000) },
                     },
                 });
             });
-            // 10. Set HttpOnly, Secure, SameSite cookie
-            res.cookie("refreshToken", newRefreshToken, getRefreshCookieOptions());
-            // 11. Respond with accessToken ONLY (never expose refreshToken in JSON)
+            // Set new refresh token cookie
+            res.cookie("refreshToken", newRefreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
             res.status(200).json({
                 success: true,
                 accessToken,
+                refreshToken: newRefreshToken,
                 message: "Token refreshed successfully",
             });
         }
@@ -741,25 +608,20 @@ class AuthController {
                 error: "Token refresh failed",
             });
         }
-        finally {
-            if (lockKey && lockAcquired) {
-                await redis_1.redisService.releaseLock(lockKey);
-            }
-        }
     }
     /**
      * User logout
      */
     static async logout(req, res) {
         try {
-            const refreshToken = req.cookies?.refreshToken || req.headers["x-refresh-token"];
-            // Revoke refresh tokens from database and mark user revoked in shared state
-            if (req.user?.tenantId && req.user?.id) {
-                await revokeUserSessions(req.user.id, refreshToken);
+            const { refreshToken } = req.cookies;
+            // Revoke refresh token from database if present
+            if (refreshToken && req.user) {
                 try {
                     await database_1.tenantAwarePrisma.withTenant(req.user.tenantId, async (client) => {
                         await client.refreshToken.deleteMany({
                             where: {
+                                token: refreshToken,
                                 userId: req.user.id,
                             },
                         });
@@ -767,24 +629,7 @@ class AuthController {
                 }
                 catch (error) {
                     console.error("Error revoking refresh token:", error);
-                }
-            }
-            else if (refreshToken) {
-                try {
-                    const decoded = jwt_1.JWTUtils.verifyRefreshToken(refreshToken);
-                    if (decoded?.tenantId && decoded?.userId) {
-                        await revokeUserSessions(decoded.userId, refreshToken);
-                        await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-                            await client.refreshToken.deleteMany({
-                                where: {
-                                    userId: decoded.userId,
-                                },
-                            });
-                        });
-                    }
-                }
-                catch {
-                    await revokeUserSessions("", refreshToken);
+                    // Continue with logout even if token deletion fails
                 }
             }
             // Log logout transaction
@@ -801,8 +646,8 @@ class AuthController {
                     entityLabel: req.user.email,
                 });
             }
-            // Clear refresh token cookie with exact same options
-            res.clearCookie("refreshToken", getRefreshCookieOptions());
+            // Clear refresh token cookie
+            res.clearCookie("refreshToken");
             res.status(200).json({
                 success: true,
                 message: "Logged out successfully",
@@ -1282,7 +1127,13 @@ class AuthController {
                 });
             });
             // Set refresh token cookie
-            res.cookie("refreshToken", refreshToken, getRefreshCookieOptions());
+            res.cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
@@ -1292,10 +1143,11 @@ class AuthController {
             const requestProduct = (0, brand_1.productFromRequest)(req);
             const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
-            // Return user data and access token (refreshToken kept strictly in httpOnly cookie)
+            // Return user data and access token
             const loginResponse = {
                 success: true,
                 accessToken,
+                refreshToken,
                 user: {
                     id: user.id,
                     name: user.name,
@@ -1458,7 +1310,13 @@ class AuthController {
                 });
             });
             // Set refresh token cookie
-            res.cookie("refreshToken", refreshToken, getRefreshCookieOptions());
+            res.cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
@@ -1468,10 +1326,11 @@ class AuthController {
             const requestProduct = (0, brand_1.productFromRequest)(req);
             const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
-            // Return user data and access token (refreshToken kept strictly in httpOnly cookie)
+            // Return user data and access token
             const loginResponse = {
                 success: true,
                 accessToken,
+                refreshToken,
                 user: {
                     id: user.id,
                     name: user.name,

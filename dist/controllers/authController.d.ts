@@ -1,6 +1,6 @@
-import { Request, Response, CookieOptions } from "express";
+import { Response } from "express";
 import { AuthRequest } from "@/types";
-export declare function getRefreshCookieOptions(): CookieOptions;
+import { Request } from "express";
 export declare class AuthController {
     /**
      * Global login for Chrome Extension
@@ -25,8 +25,6 @@ export declare class AuthController {
     static login(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Refresh access token
-     * Strictly validates session against DB, user/tenant active status, associates rotated tokens for idempotency,
-     * sets HttpOnly cookie, and returns only accessToken (never leaks refreshToken to JavaScript).
      */
     static refresh(req: AuthRequest, res: Response): Promise<void>;
     /**
