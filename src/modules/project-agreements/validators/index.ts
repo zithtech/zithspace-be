@@ -148,6 +148,7 @@ export const agreementSchema = z
     passwordMode: z.enum(['INHERIT_TENANT', 'CUSTOM', 'NONE']).optional(),
     customPassword: z.string().trim().max(200).optional(),
     notes: z.string().trim().max(4000).nullable().optional(),
+    leadId: uuid.nullable().optional(),
     values: z.record(z.string(), z.string().max(10_000)).default({}),
   })
   .refine(

@@ -55,6 +55,7 @@ export interface LeadData {
   // Who actually created this lead — recorded at insert time from req.user.id.
   created_by?: string;
   form_data?: Record<string, any>;
+  contact_name?: string;
 }
 
 export class LeadModel {
@@ -73,8 +74,9 @@ export class LeadModel {
         client_phone_verified, ai_score, proposal_text, template_used, platform,
         internal_notes, skill_analysis, ai_summary,
         lead_source_kind, company, company_domain, company_size,
-        inquiry_message, website_source, created_by, form_data
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+        inquiry_message, website_source, created_by, form_data,
+        contact_name
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44)
       RETURNING *;
     `;
 
@@ -122,6 +124,7 @@ export class LeadModel {
       data.website_source,
       data.created_by || null,
       data.form_data ? JSON.stringify(data.form_data) : null,
+      data.contact_name || null,
     ];
 
     try {
@@ -216,7 +219,7 @@ export class LeadModel {
       } else if (bidiqView === 'cold') {
         whereClause += ` AND COALESCE(l.ai_score, 0) < 50`;
       } else if (bidiqView === 'with_proposal') {
-        whereClause += ` AND (p.id IS NOT NULL OR l.proposal_text IS NOT NULL)`;
+        whereClause += ` AND (p.id IS NOT NULL OR pa.id IS NOT NULL OR l.proposal_text IS NOT NULL)`;
       }
     }
 
@@ -229,6 +232,12 @@ export class LeadModel {
         WHERE tenant_id = $1
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM pa_agreements
+        WHERE tenant_id::text = $1::text AND deleted_at IS NULL AND lead_id IS NOT NULL
+        ORDER BY lead_id, created_at DESC
+      ) pa ON l.id = pa.lead_id
       LEFT JOIN (
         SELECT lead_id, MAX(sent_at) as last_mail_at
         FROM lead_mails
@@ -254,6 +263,7 @@ export class LeadModel {
       SELECT
         l.*,
         p.id as proposal_id,
+        pa.id as agreement_id,
         lm.last_mail_at,
         u.name as created_by_name
       FROM leads l
@@ -263,6 +273,12 @@ export class LeadModel {
         WHERE tenant_id = $1
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM pa_agreements
+        WHERE tenant_id::text = $1::text AND deleted_at IS NULL AND lead_id IS NOT NULL
+        ORDER BY lead_id, created_at DESC
+      ) pa ON l.id = pa.lead_id
       LEFT JOIN (
         SELECT lead_id, MAX(sent_at) as last_mail_at
         FROM lead_mails
@@ -286,6 +302,7 @@ export class LeadModel {
       SELECT
         l.*,
         p.id as proposal_id,
+        pa.id as agreement_id,
         lm.last_mail_at,
         u.name as created_by_name
       FROM leads l
@@ -295,6 +312,12 @@ export class LeadModel {
         WHERE lead_id = $1 AND tenant_id = $2
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM pa_agreements
+        WHERE lead_id = $1 AND tenant_id::text = $2::text AND deleted_at IS NULL
+        ORDER BY lead_id, created_at DESC
+      ) pa ON l.id = pa.lead_id
       LEFT JOIN users u ON u.id = l.created_by
       LEFT JOIN (
         SELECT lead_id, MAX(sent_at) as last_mail_at
@@ -378,7 +401,7 @@ export class LeadModel {
   ): Promise<any> {
     if (!options?.page || !options?.limit) {
       const query = `
-        SELECT l.*, p.id as proposal_id
+        SELECT l.*, p.id as proposal_id, pa.id as agreement_id
         FROM leads l
         LEFT JOIN (
           SELECT DISTINCT ON (lead_id) id, lead_id 
@@ -386,6 +409,12 @@ export class LeadModel {
           WHERE tenant_id = $1 
           ORDER BY lead_id, created_at DESC
         ) p ON l.id = p.lead_id
+        LEFT JOIN (
+          SELECT DISTINCT ON (lead_id) id, lead_id
+          FROM pa_agreements
+          WHERE tenant_id::text = $1::text AND deleted_at IS NULL AND lead_id IS NOT NULL
+          ORDER BY lead_id, created_at DESC
+        ) pa ON l.id = pa.lead_id
         WHERE l.tenant_id = $1 
           AND l.is_deleted = true 
           AND l.deleted_at >= NOW() - INTERVAL '7 days'
@@ -422,7 +451,7 @@ export class LeadModel {
     const offsetIdx = dataParams.length;
 
     const dataQuery = `
-      SELECT l.*, p.id as proposal_id
+      SELECT l.*, p.id as proposal_id, pa.id as agreement_id
       FROM leads l
       LEFT JOIN (
         SELECT DISTINCT ON (lead_id) id, lead_id 
@@ -430,6 +459,12 @@ export class LeadModel {
         WHERE tenant_id = $1 
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM pa_agreements
+        WHERE tenant_id::text = $1::text AND deleted_at IS NULL AND lead_id IS NOT NULL
+        ORDER BY lead_id, created_at DESC
+      ) pa ON l.id = pa.lead_id
       WHERE l.tenant_id = $1 
         AND l.is_deleted = true 
         AND l.deleted_at >= NOW() - INTERVAL '7 days'

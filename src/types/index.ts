@@ -273,6 +273,7 @@ export interface LoginCredentials {
 export interface LoginResponse {
   success: boolean;
   accessToken: string;
+  refreshToken?: string;
   user: {
     id: string;
     name: string;

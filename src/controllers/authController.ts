@@ -413,6 +413,7 @@ export class AuthController {
       const loginResponse: LoginResponse = {
         success: true,
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           name: user.name,
@@ -475,9 +476,17 @@ export class AuthController {
    */
   static async refresh(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { refreshToken } = req.cookies;
+      // Collect all candidate tokens in order: body first (freshest in-memory), then header, then cookie
+      const rawCandidates = [
+        req.body?.refreshToken,
+        req.headers["x-refresh-token"] as string,
+        req.cookies?.refreshToken,
+      ].filter((t): t is string => typeof t === "string" && t.trim().length > 0);
 
-      if (!refreshToken) {
+      // Deduplicate candidates
+      const candidates = Array.from(new Set(rawCandidates));
+
+      if (candidates.length === 0) {
         res.status(401).json({
           success: false,
           error: "Refresh token required",
@@ -485,21 +494,51 @@ export class AuthController {
         return;
       }
 
-      // Verify refresh token
-      const decoded = JWTUtils.verifyRefreshToken(refreshToken);
+      let storedToken: any = null;
+      let verifiedDecoded: any = null;
+      let matchedCandidate: string | null = null;
+      let fallbackUser: any = null;
 
-      // Check if token exists in database and is not expired
-      const storedToken = await tenantAwarePrisma.withTenant(
-        decoded.tenantId,
-        async (client) => {
-          return await client.refreshToken.findFirst({
-            where: {
-              token: refreshToken,
-              userId: decoded.userId,
-              expiresAt: { gt: new Date() },
-            },
-            include: {
-              user: {
+      // Try each candidate token until we find a match
+      for (const candidate of candidates) {
+        try {
+          const decoded = JWTUtils.verifyRefreshToken(candidate);
+
+          const found = await tenantAwarePrisma.withTenant(
+            decoded.tenantId,
+            async (client) => {
+              // 1. First try exact unexpired token match
+              const exact = await client.refreshToken.findFirst({
+                where: {
+                  token: candidate,
+                  userId: decoded.userId,
+                  expiresAt: { gt: new Date() },
+                },
+                include: {
+                  user: {
+                    include: {
+                      tenant: true,
+                      position: {
+                        select: {
+                          id: true,
+                          title: true,
+                          code: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              });
+
+              if (exact) return exact;
+
+              // 2. If exact token was recently rotated or expired, verify user and tenant are still active
+              const userRecord = await client.user.findFirst({
+                where: {
+                  id: decoded.userId,
+                  tenantId: decoded.tenantId,
+                  isActive: true,
+                },
                 include: {
                   tenant: true,
                   position: {
@@ -510,17 +549,35 @@ export class AuthController {
                     },
                   },
                 },
-              },
-            },
-          });
-        },
-      );
+              });
 
-      if (
-        !storedToken ||
-        !storedToken.user.isActive ||
-        !storedToken.user.tenant.isActive
-      ) {
+              if (userRecord && userRecord.tenant.isActive) {
+                fallbackUser = userRecord;
+              }
+
+              return null;
+            },
+          );
+
+          if (found && found.user?.isActive && found.user?.tenant?.isActive) {
+            storedToken = found;
+            verifiedDecoded = decoded;
+            matchedCandidate = candidate;
+            break;
+          } else if (fallbackUser) {
+            verifiedDecoded = decoded;
+            matchedCandidate = candidate;
+            break;
+          }
+        } catch {
+          // Token verification failed for this candidate, try next
+          continue;
+        }
+      }
+
+      const activeUser = storedToken?.user || fallbackUser;
+
+      if (!activeUser || !activeUser.isActive || !activeUser.tenant?.isActive) {
         res.status(401).json({
           success: false,
           error: "Invalid or expired refresh token",
@@ -528,49 +585,66 @@ export class AuthController {
         return;
       }
 
-      // Create auth user object for new token generation //
+      // Create auth user object for new token generation
       const authUser = {
-        id: storedToken.user.id,
-        tenantId: storedToken.user.tenantId,
-        email: storedToken.user.workEmail,
-        role: storedToken.user.role as any,
-        position: storedToken.user.position?.title || null,
-        name: storedToken.user.name,
+        id: activeUser.id,
+        tenantId: activeUser.tenantId,
+        email: activeUser.workEmail,
+        role: activeUser.role as any,
+        position: activeUser.position?.title || null,
+        name: activeUser.name,
       };
 
       // Generate new token pair
       const { accessToken, refreshToken: newRefreshToken } =
         JWTUtils.generateTokenPair(authUser);
 
-      // Replace old refresh token with new one
+      // Rotate refresh token with a 5-minute grace window to protect concurrent tabs / background throttled tabs
       await tenantAwarePrisma.withTenant(
-        decoded.tenantId,
+        verifiedDecoded.tenantId,
         async (client) => {
-          await client.refreshToken.deleteMany({
-            where: { id: storedToken.id },
+          if (storedToken) {
+            // Keep the previous token valid for 5 minutes grace window so sibling tabs don't fail
+            await client.refreshToken.updateMany({
+              where: { id: storedToken.id },
+              data: {
+                expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5-minute grace window
+              },
+            });
+          }
+
+          // Create the new refresh token
+          await client.refreshToken.create({
+            data: {
+              token: newRefreshToken,
+              userId: activeUser.id,
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            },
           });
 
-        await client.refreshToken.create({
-          data: {
-            token: newRefreshToken,
-            userId: storedToken.user.id,
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-          },
-        });
-      });
+          // Clean up tokens that expired more than 10 minutes ago
+          await client.refreshToken.deleteMany({
+            where: {
+              userId: activeUser.id,
+              expiresAt: { lt: new Date(Date.now() - 10 * 60 * 1000) },
+            },
+          });
+        },
+      );
 
       // Set new refresh token cookie
       res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 30 days
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         path: "/", // Ensure cookie is available for all paths
       });
 
       res.status(200).json({
         success: true,
         accessToken,
+        refreshToken: newRefreshToken,
         message: "Token refreshed successfully",
       } as ApiResponse);
     } catch (error) {
@@ -1199,6 +1273,7 @@ export class AuthController {
       const loginResponse: LoginResponse = {
         success: true,
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           name: user.name,
@@ -1409,6 +1484,7 @@ export class AuthController {
       const loginResponse: LoginResponse = {
         success: true,
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           name: user.name,

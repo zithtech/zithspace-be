@@ -168,6 +168,7 @@ export class LeadController {
         // Lead Intake stores its company-profile extras + decision_makers[]
         // array in the JSONB form_data column.
         form_data: req.body.formData,
+        contact_name: req.body.contactName || req.body.contact_name,
 
         // Real owner — captured here so we never have to fall back to the
         // currently-signed-in user on render.
@@ -439,6 +440,8 @@ export class LeadController {
         inquiryMessage: 'inquiry_message',
         websiteSource: 'website_source',
         formData: 'form_data',
+        contactName: 'contact_name',
+        contact_name: 'contact_name',
       };
 
       const parseDate = (val: any) => {
