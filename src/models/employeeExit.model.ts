@@ -429,9 +429,25 @@ export const getPendingApprovals = async (tenantId: string, employeeId: string):
         )
       )
       AND (
-        (a.approver_type = 'ReportingManager' AND e.reporting_manager_id = $2)
+        (a.approver_type = 'ReportingManager' AND (
+          e.reporting_manager_id = $2
+          OR e.reporting_manager_id IN (SELECT u_rm.id FROM users u_rm WHERE u_rm.employee_id::text = $2)
+          OR e.reporting_manager_id IN (SELECT u_rm.employee_id::text FROM users u_rm WHERE u_rm.id = $2)
+        ))
         OR (a.approver_id = $2)
-        OR (a.approver_id IN (SELECT position_id FROM employees WHERE id::text = $2 OR user_id = $2))
+        OR (a.approver_id IN (SELECT u_app.id FROM users u_app WHERE u_app.employee_id::text = $2))
+        OR (a.approver_id IN (SELECT u_app.employee_id::text FROM users u_app WHERE u_app.id = $2))
+        OR (a.approver_id IN (
+          SELECT ewd.position_id::text 
+          FROM employee_work_details ewd 
+          WHERE (ewd.employee_id::text = $2 OR ewd.employee_id IN (SELECT u_ewd.employee_id FROM users u_ewd WHERE u_ewd.id = $2 AND u_ewd.employee_id IS NOT NULL))
+            AND ewd.position_id IS NOT NULL
+          UNION
+          SELECT u_pos.position_id::text 
+          FROM users u_pos 
+          WHERE (u_pos.id = $2 OR u_pos.employee_id::text = $2)
+            AND u_pos.position_id IS NOT NULL
+        ))
       )
     ORDER BY a.created_at DESC
   `;

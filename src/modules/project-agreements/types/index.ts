@@ -251,6 +251,7 @@ export interface Agreement {
   passwordMode?: AgreementPasswordMode;
   passwordVersion?: number;
   values?: Record<string, string>;
+  leadId?: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;

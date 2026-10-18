@@ -84,6 +84,7 @@ export interface UserSpend {
   userId: string;
   name: string | null;
   email: string | null;
+  avatarUrl?: string | null;
   claims: number;
   total: number;
 }
@@ -92,12 +93,12 @@ export async function spendByUser(client: TenantClient, range: DateRange): Promi
   const params: any[] = [client.tenantId];
   const clause = rangeClause(range, params, 'cl.created_at');
   const { rows } = await client.query(
-    `SELECT cl.user_id, u.name, u.work_email AS email,
+    `SELECT cl.user_id, u.name, u.work_email AS email, u.avatar_url,
             count(*) AS claims, COALESCE(sum(cl.base_amount), 0) AS total
        FROM rb2_claims cl
        JOIN users u ON u.id = cl.user_id::text
       WHERE cl.tenant_id = $1 AND cl.deleted_at IS NULL AND cl.status <> 'cancelled'${clause}
-      GROUP BY cl.user_id, u.name, u.work_email
+      GROUP BY cl.user_id, u.name, u.work_email, u.avatar_url
       ORDER BY total DESC`,
     params
   );
@@ -105,6 +106,7 @@ export async function spendByUser(client: TenantClient, range: DateRange): Promi
     userId: r.user_id,
     name: r.name ?? null,
     email: r.email ?? null,
+    avatarUrl: r.avatar_url ?? null,
     claims: Number(r.claims),
     total: num(r.total),
   }));

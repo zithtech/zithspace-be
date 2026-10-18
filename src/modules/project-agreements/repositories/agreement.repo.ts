@@ -53,6 +53,7 @@ export interface AgreementInput {
   showSignatures: boolean;
   summaryFields: SummaryFieldKey[] | null;
   notes: string | null;
+  leadId?: string | null;
   isPasswordProtected?: boolean;
   passwordMode?: 'INHERIT_TENANT' | 'CUSTOM' | 'NONE';
   customPassword?: string;
@@ -61,6 +62,7 @@ export interface AgreementInput {
 
 const COLUMNS = `
   a.id,
+  a.lead_id          AS "leadId",
   a.document_type_id   AS "documentTypeId",
   a.document_type_name AS "documentTypeName",
   a.document_type_code AS "documentTypeCode",
@@ -237,6 +239,7 @@ export async function createAgreement(
         signatory_company, client_signatory_company,
         client_id, client_company, client_contact_id,
         client_signatory_position,
+        lead_id,
         document_type_id, document_type_name, document_type_code,
         created_by, updated_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
@@ -247,8 +250,9 @@ export async function createAgreement(
              $28, $29,
              $30, $31, $32,
              $33,
-             $34, $35, $36,
-             $37, $37)
+             $34,
+             $35, $36, $37,
+             $38, $38)
      RETURNING id`,
     [
       client.tenantId,
@@ -287,6 +291,7 @@ export async function createAgreement(
       input.clientCompany,
       input.clientContactId,
       input.clientSignatoryPosition,
+      input.leadId ?? null,
       input.documentTypeId,
       input.documentTypeName,
       input.documentTypeCode,
@@ -382,6 +387,7 @@ export async function updateAgreement(
             client_company           = $32,
             client_contact_id        = $33,
             client_signatory_position = $34,
+            lead_id                  = COALESCE($39, lead_id),
             document_type_id   = $36,
             document_type_name = $37,
             document_type_code = $38,
@@ -430,6 +436,7 @@ export async function updateAgreement(
       input.documentTypeId,
       input.documentTypeName,
       input.documentTypeCode,
+      input.leadId ?? null,
     ]
   );
   if (!rowCount) return null;

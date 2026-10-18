@@ -72,6 +72,22 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
     const input = await composeInput(c, body);
     return repo.createAgreement(c, input, userId);
   });
+
+  if (body.leadId && userId) {
+    try {
+      const { LeadActivityLogModel } = require('@/models/LeadActivityLog.model');
+      LeadActivityLogModel.create({
+        tenantId,
+        leadId: body.leadId,
+        action: 'CREATED_PROPOSAL',
+        performedBy: userId,
+        metadata: { agreementId: agreement.id, title: agreement.title }
+      }).catch((err: any) => console.error('Failed to log lead activity for agreement creation:', err));
+    } catch (e) {
+      console.error('Error logging lead activity:', e);
+    }
+  }
+
   ok(res, agreement, 201);
 });
 
@@ -454,6 +470,7 @@ async function composeInput(
     passwordMode: body.passwordMode as any,
     customPassword: body.customPassword,
     notes: nullish(body.notes),
+    leadId: nullish(body.leadId),
     values: body.values,
   };
 }
