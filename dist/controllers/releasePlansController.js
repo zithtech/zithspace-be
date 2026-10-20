@@ -939,22 +939,18 @@ class ReleasePlansController {
                 return;
             }
             const { projectId } = req.query;
-            if (!projectId) {
-                res.status(400).json({
-                    success: false,
-                    error: "projectId is required",
-                });
-                return;
+            const whereClause = {
+                tenantId: req.tenantId,
+                type: 'sprint_plan',
+                status: {
+                    in: ['active', 'planning']
+                }
+            };
+            if (projectId && projectId !== 'all' && projectId !== 'undefined') {
+                whereClause.projectId = projectId;
             }
             const sprints = await database_1.prisma.releasePlan.findMany({
-                where: {
-                    projectId: projectId,
-                    tenantId: req.tenantId,
-                    type: 'sprint_plan',
-                    status: {
-                        in: ['active', 'planning']
-                    }
-                },
+                where: whereClause,
                 select: {
                     id: true,
                     version: true,
@@ -963,6 +959,14 @@ class ReleasePlansController {
                     endDate: true,
                     goal: true,
                     createdAt: true,
+                    projectId: true,
+                    project: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                        }
+                    }
                 },
                 orderBy: [
                     { status: 'desc' }, // Active first

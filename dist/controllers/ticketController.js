@@ -428,27 +428,48 @@ class TicketController {
                     throw new types_1.ValidationError(`Cannot create subtask of a subtask. Ticket ${parentTicket.ticketNumber} is already a subtask.`);
                 }
             }
-            // Generate ticket number with retry logic to handle race conditions
+            // Generate ticket number with retry logic to handle race conditions and collisions
             let ticket;
             let ticketNumber = "";
             let attempts = 0;
-            const maxAttempts = 5;
+            const maxAttempts = 10;
+            const prefix = project.code || "TKT";
+            const cleanPrefix = prefix.replace(new RegExp(`^${req.tenantId}_`), '');
+            const pattern1 = `${prefix}-%`;
+            const pattern2 = `${cleanPrefix}-%`;
+            // Find the highest ticket sequence for this project or any ticket with this prefix in this tenant
+            // Using raw SQL MAX on numeric suffix for reliable numeric ordering
+            const seqResult = await database_1.prisma.$queryRaw `
+        SELECT COALESCE(
+          MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
+          0
+        ) + 1 AS next_seq
+        FROM tickets
+        WHERE tenant_id = ${req.tenantId}
+          AND (
+            project_id = ${projectId}
+            OR ticket_number LIKE ${pattern1}
+            OR ticket_number LIKE ${pattern2}
+          )
+          AND ticket_number ~ '-\\d+$'
+      `;
+            let currentSeq = seqResult[0]?.next_seq ?? 1;
             while (attempts < maxAttempts) {
                 attempts++;
-                // Find the highest ticket sequence for THIS specific project (by projectId, not just prefix)
-                // Using raw SQL MAX on numeric suffix for reliable numeric ordering
-                const seqResult = await database_1.prisma.$queryRaw `
-          SELECT COALESCE(
-            MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
-            0
-          ) + 1 AS next_seq
-          FROM tickets
-          WHERE tenant_id = ${req.tenantId}
-            AND project_id = ${projectId}
-            AND ticket_number ~ '-\\d+$'
-        `;
-                const nextTicketNumber = seqResult[0]?.next_seq ?? 1;
-                ticketNumber = `${project.code || "TKT"}-${String(nextTicketNumber).padStart(4, "0")}`;
+                ticketNumber = `${prefix}-${String(currentSeq).padStart(4, "0")}`;
+                // Verify if ticketNumber is already taken in the tenant
+                const existingTicket = await database_1.prisma.ticket.findFirst({
+                    where: {
+                        tenantId: req.tenantId,
+                        ticketNumber,
+                    },
+                    select: { id: true },
+                });
+                if (existingTicket) {
+                    console.warn(`Ticket number ${ticketNumber} already exists in tenant. Advancing sequence to ${currentSeq + 1}...`);
+                    currentSeq++;
+                    continue;
+                }
                 try {
                     // Prepare metadata for additional fields not in schema
                     const metadata = {
@@ -503,11 +524,12 @@ class TicketController {
                 catch (error) {
                     // Check if it's a unique constraint error on ticketNumber
                     if (error.code === 'P2002' && error.meta?.target?.includes('ticket_number')) {
-                        console.warn(`Ticket number collision on ${ticketNumber}, attempt ${attempts}/${maxAttempts}. Retrying...`);
+                        console.warn(`Ticket number collision on ${ticketNumber}, attempt ${attempts}/${maxAttempts}. Advancing sequence...`);
+                        currentSeq++;
                         if (attempts >= maxAttempts) {
                             throw error; // Max attempts reached
                         }
-                        continue; // Try again with a new number
+                        continue; // Try again with the incremented number
                     }
                     throw error; // Rethrow other errors
                 }
@@ -1551,9 +1573,11 @@ class TicketController {
                 delete mappedUpdates.taskType;
             }
             // Handle releasePlan / sprint assignment smart mapping
-            if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
+            if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined || updates.sprintPlanId !== undefined) {
                 // FIX: Use explicit check to allow 'null' to pass through correctly
-                const planId = updates.releasePlan !== undefined ? updates.releasePlan : updates.sprintPlan;
+                const planId = updates.releasePlan !== undefined
+                    ? updates.releasePlan
+                    : (updates.sprintPlan !== undefined ? updates.sprintPlan : updates.sprintPlanId);
                 if (planId === null || planId === 'null' || planId === '') {
                     mappedUpdates.sprintPlanId = null;
                     mappedUpdates.releasePlanId = null;
@@ -1571,6 +1595,9 @@ class TicketController {
                                 mappedUpdates.sprintPlanId = planId;
                                 // Important: clear releasePlanId if moving to a sprint
                                 mappedUpdates.releasePlanId = null;
+                                if (plan.projectId) {
+                                    mappedUpdates.projectId = plan.projectId;
+                                }
                             }
                             else if (plan.type === 'demo_plan') {
                                 mappedUpdates.demoPlanId = planId;
@@ -1578,6 +1605,9 @@ class TicketController {
                             else {
                                 mappedUpdates.releasePlanId = planId;
                                 mappedUpdates.sprintPlanId = null;
+                                if (plan.projectId) {
+                                    mappedUpdates.projectId = plan.projectId;
+                                }
                             }
                         }
                     }
