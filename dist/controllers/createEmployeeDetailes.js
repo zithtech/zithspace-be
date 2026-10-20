@@ -683,31 +683,9 @@ async function updatePersonalDetails(req, employeeId, client) {
         throw new Error(`Failed to update personal details: ${error.message}`);
     }
 }
-// ✅ DELETE Personal Details (Soft delete by setting status to false)
+// ✅ DELETE Personal Details
 async function deletePersonalDetails(req, employeeId) {
-    try {
-        if (!req.user?.id || !req.tenantId)
-            throw new Error("Unauthorized");
-        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
-            const existingRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
-            if (!existingRes.rows[0]) {
-                throw new Error("Employee not found");
-            }
-            const updated = await db.query(`UPDATE employees
-            SET status = false, updated_by = $1, updated_at = now()
-          WHERE id = $2 AND tenant_id = $3
-        RETURNING *`, [req.user.id, employeeId, req.tenantId]);
-            return {
-                success: true,
-                message: "Employee deleted successfully",
-                employee: updated.rows[0],
-            };
-        });
-    }
-    catch (error) {
-        console.error("Error in deletePersonalDetails:", error);
-        throw new Error(`Failed to delete employee: ${error.message}`);
-    }
+    return hardDeletePersonalDetails(req, employeeId);
 }
 // ✅ HARD DELETE Personal Details (Permanently remove from database)
 async function hardDeletePersonalDetails(req, employeeId) {
@@ -715,17 +693,50 @@ async function hardDeletePersonalDetails(req, employeeId) {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
         return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
-            const existingRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            const existingRes = await db.query(`SELECT * FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
             if (!existingRes.rows[0]) {
                 throw new Error("Employee not found");
             }
-            // Delete related records first (due to foreign key constraints)
+            const employee = existingRes.rows[0];
+            // Delete child / related records (non-cascade FKs and related tables)
+            await db.query(`DELETE FROM employee_role_history WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_onboarding_invites WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_documents WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_contacts WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_experience WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_salary WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_client_allocations_v2 WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM leave_ledger WHERE employee_id = $1`, [employeeId]);
+            // Payroll items
+            await db.query(`DELETE FROM pay_run_items WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM pay_payslip_job_items WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM pay_payslips WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM payslips WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM pay_employee_assignments WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM pay_employee_profiles WHERE employee_id = $1`, [employeeId]);
+            // Unlink users referencing this employee
+            await db.query(`UPDATE users SET employee_id = NULL WHERE employee_id = $1`, [employeeId]);
+            // Cascade tables (explicit cleanup)
             await db.query(`DELETE FROM employee_addresses WHERE employee_id = $1`, [employeeId]);
             await db.query(`DELETE FROM employee_emergency_contacts WHERE employee_id = $1`, [employeeId]);
             await db.query(`DELETE FROM employee_identities WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_assets WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_bank_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_payroll_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_work_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_timelines WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_project_mappings WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_additional_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_exits WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM leave_adjustments WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM leave_requests WHERE employee_id = $1`, [employeeId]);
             // Finally delete the employee
             await db.query(`DELETE FROM employees WHERE id = $1 AND tenant_id = $2`, [employeeId, req.tenantId]);
-            return { success: true, message: "Employee permanently deleted" };
+            return {
+                success: true,
+                message: "Employee deleted successfully",
+                employee,
+            };
         });
     }
     catch (error) {

@@ -142,4 +142,5 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
 export declare function hardDeletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{
     success: boolean;
     message: string;
+    employee: any;
 }>;

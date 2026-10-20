@@ -897,12 +897,43 @@ export class TicketController {
           });
 
           if (activeSprints.length > 0) {
-            baseWhere.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+            const activeSprintIds = activeSprints.map((s) => s.id);
+            baseWhere.sprintPlanId = { in: activeSprintIds };
+            delete baseWhere.projectId;
+
+            if (projectId && typeof projectId === 'string') {
+              prisma.ticket.updateMany({
+                where: {
+                  tenantId: req.tenantId,
+                  sprintPlanId: { in: activeSprintIds },
+                  projectId: { not: projectId }
+                },
+                data: {
+                  projectId: projectId,
+                  updatedAt: new Date()
+                }
+              }).catch((err) => console.error("Self-heal active sprint ticket projectId error:", err));
+            }
           } else {
             baseWhere.sprintPlanId = { in: [] };
           }
         } else {
           baseWhere.sprintPlanId = sprintId;
+          delete baseWhere.projectId;
+
+          if (projectId && typeof projectId === 'string' && typeof sprintId === 'string') {
+            prisma.ticket.updateMany({
+              where: {
+                tenantId: req.tenantId,
+                sprintPlanId: sprintId,
+                projectId: { not: projectId }
+              },
+              data: {
+                projectId: projectId,
+                updatedAt: new Date()
+              }
+            }).catch((err) => console.error("Self-heal sprint ticket projectId error:", err));
+          }
         }
       }
 
@@ -1152,12 +1183,43 @@ export class TicketController {
           });
 
           if (activeSprints.length > 0) {
-            where.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+            const activeSprintIds = activeSprints.map((s) => s.id);
+            where.sprintPlanId = { in: activeSprintIds };
+            delete where.projectId;
+
+            if (projectId && typeof projectId === 'string') {
+              prisma.ticket.updateMany({
+                where: {
+                  tenantId: req.tenantId,
+                  sprintPlanId: { in: activeSprintIds },
+                  projectId: { not: projectId }
+                },
+                data: {
+                  projectId: projectId,
+                  updatedAt: new Date()
+                }
+              }).catch((err) => console.error("Self-heal active sprint ticket projectId error:", err));
+            }
           } else {
             where.sprintPlanId = { in: [] };
           }
         } else {
           where.sprintPlanId = sprintId;
+          delete where.projectId;
+
+          if (projectId && typeof projectId === 'string' && typeof sprintId === 'string') {
+            prisma.ticket.updateMany({
+              where: {
+                tenantId: req.tenantId,
+                sprintPlanId: sprintId,
+                projectId: { not: projectId }
+              },
+              data: {
+                projectId: projectId,
+                updatedAt: new Date()
+              }
+            }).catch((err) => console.error("Self-heal sprint ticket projectId error:", err));
+          }
         }
       }
 
