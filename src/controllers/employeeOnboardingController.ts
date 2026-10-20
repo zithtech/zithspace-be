@@ -344,7 +344,7 @@ export class EmployeeOnboardingController {
     }
   }
 
-  // ✅ DELETE Employee (Soft Delete)
+  // ✅ DELETE Employee
   static async delete(req: AuthRequest, res: Response) {
     try {
       const { employeeId } = req.params;
@@ -361,9 +361,8 @@ export class EmployeeOnboardingController {
         entityType: EntityType.EMPLOYEE,
         entityId: employeeId,
         entityLabel: empLabel(emp),
-        beforeData: { status: true },
-        afterData: { status: false },
-        changedFields: ["status"],
+        beforeData: emp ? { ...emp } : null,
+        afterData: null,
       });
 
       res.status(200).json({

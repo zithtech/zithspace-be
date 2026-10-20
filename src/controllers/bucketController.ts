@@ -597,6 +597,43 @@ export class BucketController {
         },
       });
 
+      // If bucket's projectId was changed to a valid project, cascade projectId update to tickets in this bucket
+      if (targetProjectId && targetProjectId !== existingBucket.projectId) {
+        const bucketTickets = await prisma.ticket.findMany({
+          where: {
+            bucketId: id,
+            tenantId: req.tenantId,
+            isDeleted: false,
+          },
+          select: { id: true },
+        });
+        const bucketTicketIds = bucketTickets.map((t) => t.id);
+
+        if (bucketTicketIds.length > 0) {
+          await prisma.ticket.updateMany({
+            where: {
+              id: { in: bucketTicketIds },
+              tenantId: req.tenantId,
+            },
+            data: {
+              projectId: targetProjectId,
+              updatedAt: new Date(),
+            },
+          });
+
+          await prisma.ticket.updateMany({
+            where: {
+              parentId: { in: bucketTicketIds },
+              tenantId: req.tenantId,
+            },
+            data: {
+              projectId: targetProjectId,
+              updatedAt: new Date(),
+            },
+          });
+        }
+      }
+
       // Emit socket event
       socketService.emitToTenant(req.tenantId, "bucket:updated", bucket);
 
@@ -1169,21 +1206,46 @@ export class BucketController {
         throw new NotFoundError("Sprint not found");
       }
 
-      // Move all tickets in bucket to this sprint
-      const result = await prisma.ticket.updateMany({
+      // Find all tickets currently in this bucket
+      const ticketsInBucket = await prisma.ticket.findMany({
         where: {
           bucketId: id,
           tenantId: req.tenantId,
           isDeleted: false,
         },
+        select: { id: true },
+      });
+      const ticketIds = ticketsInBucket.map((t) => t.id);
+
+      // Move all tickets in bucket to this sprint and sync their projectId to match the sprint's project
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
         data: {
           sprintPlanId: sprintId,
+          projectId: sprint.projectId, // Assign to the sprint's project
           releasePlanId: null, // Clear release plan
           demoPlanId: null, // Clear demo plan
           bucketId: null, // Clear bucket assignment so they show in main views
           updatedAt: new Date(),
         },
       });
+
+      // Cascade destination projectId to any subtasks belonging to these tickets
+      if (ticketIds.length > 0) {
+        await prisma.ticket.updateMany({
+          where: {
+            parentId: { in: ticketIds },
+            tenantId: req.tenantId,
+          },
+          data: {
+            projectId: sprint.projectId,
+            updatedAt: new Date(),
+          },
+        });
+      }
 
       recordTransaction({
         req,

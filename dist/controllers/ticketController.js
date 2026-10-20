@@ -780,7 +780,22 @@ class TicketController {
                         select: { id: true }
                     });
                     if (activeSprints.length > 0) {
-                        baseWhere.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+                        const activeSprintIds = activeSprints.map((s) => s.id);
+                        baseWhere.sprintPlanId = { in: activeSprintIds };
+                        delete baseWhere.projectId;
+                        if (projectId && typeof projectId === 'string') {
+                            database_1.prisma.ticket.updateMany({
+                                where: {
+                                    tenantId: req.tenantId,
+                                    sprintPlanId: { in: activeSprintIds },
+                                    projectId: { not: projectId }
+                                },
+                                data: {
+                                    projectId: projectId,
+                                    updatedAt: new Date()
+                                }
+                            }).catch((err) => console.error("Self-heal active sprint ticket projectId error:", err));
+                        }
                     }
                     else {
                         baseWhere.sprintPlanId = { in: [] };
@@ -788,6 +803,20 @@ class TicketController {
                 }
                 else {
                     baseWhere.sprintPlanId = sprintId;
+                    delete baseWhere.projectId;
+                    if (projectId && typeof projectId === 'string' && typeof sprintId === 'string') {
+                        database_1.prisma.ticket.updateMany({
+                            where: {
+                                tenantId: req.tenantId,
+                                sprintPlanId: sprintId,
+                                projectId: { not: projectId }
+                            },
+                            data: {
+                                projectId: projectId,
+                                updatedAt: new Date()
+                            }
+                        }).catch((err) => console.error("Self-heal sprint ticket projectId error:", err));
+                    }
                 }
             }
             const statuses = ['not_started', 'in_progress', 'dev_complete', 'dev_testing', 'in_review', 'live', 'live_testing', 'completed', 'pause'];
@@ -1010,7 +1039,22 @@ class TicketController {
                         select: { id: true }
                     });
                     if (activeSprints.length > 0) {
-                        where.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+                        const activeSprintIds = activeSprints.map((s) => s.id);
+                        where.sprintPlanId = { in: activeSprintIds };
+                        delete where.projectId;
+                        if (projectId && typeof projectId === 'string') {
+                            database_1.prisma.ticket.updateMany({
+                                where: {
+                                    tenantId: req.tenantId,
+                                    sprintPlanId: { in: activeSprintIds },
+                                    projectId: { not: projectId }
+                                },
+                                data: {
+                                    projectId: projectId,
+                                    updatedAt: new Date()
+                                }
+                            }).catch((err) => console.error("Self-heal active sprint ticket projectId error:", err));
+                        }
                     }
                     else {
                         where.sprintPlanId = { in: [] };
@@ -1018,6 +1062,20 @@ class TicketController {
                 }
                 else {
                     where.sprintPlanId = sprintId;
+                    delete where.projectId;
+                    if (projectId && typeof projectId === 'string' && typeof sprintId === 'string') {
+                        database_1.prisma.ticket.updateMany({
+                            where: {
+                                tenantId: req.tenantId,
+                                sprintPlanId: sprintId,
+                                projectId: { not: projectId }
+                            },
+                            data: {
+                                projectId: projectId,
+                                updatedAt: new Date()
+                            }
+                        }).catch((err) => console.error("Self-heal sprint ticket projectId error:", err));
+                    }
                 }
             }
             // Build sort object

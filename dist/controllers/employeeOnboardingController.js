@@ -245,7 +245,7 @@ class EmployeeOnboardingController {
             });
         }
     }
-    // ✅ DELETE Employee (Soft Delete)
+    // ✅ DELETE Employee
     static async delete(req, res) {
         try {
             const { employeeId } = req.params;
@@ -261,9 +261,8 @@ class EmployeeOnboardingController {
                 entityType: transactionHistory_1.EntityType.EMPLOYEE,
                 entityId: employeeId,
                 entityLabel: empLabel(emp),
-                beforeData: { status: true },
-                afterData: { status: false },
-                changedFields: ["status"],
+                beforeData: emp ? { ...emp } : null,
+                afterData: null,
             });
             res.status(200).json({
                 success: true,

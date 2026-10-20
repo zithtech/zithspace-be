@@ -275,6 +275,24 @@ class ReleasePlansController {
             const notStartedTickets = relevantTickets.filter((t) => isTodo(t.status)).length || 0;
             const inProgressTickets = Math.max(totalTickets - completedTickets - notStartedTickets, 0);
             const progress = totalTickets > 0 ? Math.round((completedTickets / totalTickets) * 100) : 0;
+            // Ensure any tickets assigned to this plan have their projectId synchronized with the plan's projectId
+            if (relevantTickets.length > 0 && releasePlan.projectId) {
+                database_1.prisma.ticket.updateMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        OR: [
+                            { sprintPlanId: id },
+                            { releasePlanId: id },
+                            { demoPlanId: id }
+                        ],
+                        projectId: { not: releasePlan.projectId }
+                    },
+                    data: {
+                        projectId: releasePlan.projectId,
+                        updatedAt: new Date()
+                    }
+                }).catch((err) => console.error("Sync plan tickets projectId error:", err));
+            }
             // Clean up response
             const { tickets, sprintTickets, demoTickets, ...planData } = releasePlan;
             res.status(200).json({
@@ -463,7 +481,7 @@ class ReleasePlansController {
                 });
                 // 2. Assign new tickets
                 if (ticketsToAssign.length > 0) {
-                    const assignData = { updatedAt: new Date() };
+                    const assignData = { updatedAt: new Date(), projectId: existingPlan.projectId };
                     if (type === "sprint_plan")
                         assignData.sprintPlanId = id;
                     else if (type === "demo_plan")
@@ -1075,7 +1093,7 @@ class ReleasePlansController {
                 res.status(404).json({ success: false, error: "Plan not found" });
                 return;
             }
-            const updateData = { updatedAt: new Date() };
+            const updateData = { updatedAt: new Date(), projectId: plan.projectId };
             if (plan.type === 'sprint_plan')
                 updateData.sprintPlanId = id;
             else if (plan.type === 'demo_plan')
