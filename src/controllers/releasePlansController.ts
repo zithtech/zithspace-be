@@ -1056,23 +1056,21 @@ export class ReleasePlansController {
       }
 
       const { projectId } = req.query;
-      if (!projectId) {
-        res.status(400).json({
-          success: false,
-          error: "projectId is required",
-        } as ApiResponse);
-        return;
+
+      const whereClause: any = {
+        tenantId: req.tenantId,
+        type: 'sprint_plan',
+        status: {
+          in: ['active', 'planning']
+        }
+      };
+
+      if (projectId && projectId !== 'all' && projectId !== 'undefined') {
+        whereClause.projectId = projectId as string;
       }
 
       const sprints = await prisma.releasePlan.findMany({
-        where: {
-          projectId: projectId as string,
-          tenantId: req.tenantId,
-          type: 'sprint_plan',
-          status: {
-            in: ['active', 'planning']
-          }
-        },
+        where: whereClause,
         select: {
           id: true,
           version: true,
@@ -1081,6 +1079,14 @@ export class ReleasePlansController {
           endDate: true,
           goal: true,
           createdAt: true,
+          projectId: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            }
+          }
         },
         orderBy: [
           { status: 'desc' }, // Active first
