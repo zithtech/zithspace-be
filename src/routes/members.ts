@@ -14,7 +14,32 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), UserController.getMembersForSelect);
+router.get('/select', requireAnyPermission(
+  Permissions.USER_READ,
+  Permissions.PROJECT_READ,
+  Permissions.TICKET_READ,
+  Permissions.ATTENDANCE_READ,
+  Permissions.ATTENDANCE_CREATE,
+  Permissions.ATTENDANCE_UPDATE,
+  Permissions.ATTENDANCE_DELETE,
+  Permissions.SQUAD_READ,
+  Permissions.SQUAD_CREATE,
+  Permissions.LEAVE_POLICY_READ,
+  Permissions.LEAVE_POLICY_CREATE,
+  Permissions.LEAVE_MANAGE,
+  Permissions.QA_SCOPE_READ,
+  Permissions.QA_SCOPE_CREATE,
+  Permissions.QA_SCOPE_UPDATE,
+  Permissions.QA_CASE_READ,
+  Permissions.QA_CASE_CREATE,
+  Permissions.QA_CASE_UPDATE,
+  Permissions.QA_RUN_READ,
+  Permissions.QA_RUN_CREATE,
+  Permissions.QA_SUBMISSION_READ,
+  Permissions.QA_SUBMISSION_CREATE,
+  Permissions.QA_APPROVAL_READ,
+  Permissions.QA_MANAGE
+), UserController.getMembersForSelect);
 
 /**
  * @route   GET /api/members
@@ -22,7 +47,32 @@ router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PR
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, role, position, isActive, search, sortBy, sortOrder
  */
-router.get('/', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), UserController.getMembers);
+router.get('/', requireAnyPermission(
+  Permissions.USER_READ,
+  Permissions.PROJECT_READ,
+  Permissions.TICKET_READ,
+  Permissions.ATTENDANCE_READ,
+  Permissions.ATTENDANCE_CREATE,
+  Permissions.ATTENDANCE_UPDATE,
+  Permissions.ATTENDANCE_DELETE,
+  Permissions.SQUAD_READ,
+  Permissions.SQUAD_CREATE,
+  Permissions.LEAVE_POLICY_READ,
+  Permissions.LEAVE_POLICY_CREATE,
+  Permissions.LEAVE_MANAGE,
+  Permissions.QA_SCOPE_READ,
+  Permissions.QA_SCOPE_CREATE,
+  Permissions.QA_SCOPE_UPDATE,
+  Permissions.QA_CASE_READ,
+  Permissions.QA_CASE_CREATE,
+  Permissions.QA_CASE_UPDATE,
+  Permissions.QA_RUN_READ,
+  Permissions.QA_RUN_CREATE,
+  Permissions.QA_SUBMISSION_READ,
+  Permissions.QA_SUBMISSION_CREATE,
+  Permissions.QA_APPROVAL_READ,
+  Permissions.QA_MANAGE
+), UserController.getMembers);
 
 /**
  * @route   GET /api/members/trash

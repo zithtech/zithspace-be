@@ -61,7 +61,7 @@ router.get('/:id/available-tickets/:projectId', (0, permission_1.requirePermissi
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, projectId, status, search, sortBy, sortOrder
  */
-router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_PLAN_READ), releasePlansController_1.ReleasePlansController.getReleasePlans);
+router.get('/', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_PLAN_READ, permissions_1.Permissions.QA_SCOPE_READ, permissions_1.Permissions.QA_SCOPE_CREATE, permissions_1.Permissions.QA_MANAGE), releasePlansController_1.ReleasePlansController.getReleasePlans);
 /**
  * @route   GET /api/release-plans/:id
  * @desc    Get release plan by ID (tenant-aware)

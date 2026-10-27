@@ -14,8 +14,28 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 router.post("/", requirePermission(Permissions.ORG_POSITION_CREATE), requireSubscriptionFeature("admin_org_structure_position", { exact: false }), PositionController.createPosition);
-router.get("/", requireAnyPermission(Permissions.ORG_POSITION_READ, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), PositionController.getPositions);
-router.get("/:id", requireAnyPermission(Permissions.ORG_POSITION_READ, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), PositionController.getPositionById);
+router.get("/", requireAnyPermission(
+  Permissions.ORG_POSITION_READ,
+  Permissions.LEAVE_POLICY_READ,
+  Permissions.LEAVE_POLICY_CREATE,
+  Permissions.LEAVE_MANAGE,
+  Permissions.QA_SCOPE_READ,
+  Permissions.QA_SCOPE_CREATE,
+  Permissions.QA_SCOPE_UPDATE,
+  Permissions.QA_SCOPE_APPROVE,
+  Permissions.QA_MANAGE
+), PositionController.getPositions);
+router.get("/:id", requireAnyPermission(
+  Permissions.ORG_POSITION_READ,
+  Permissions.LEAVE_POLICY_READ,
+  Permissions.LEAVE_POLICY_CREATE,
+  Permissions.LEAVE_MANAGE,
+  Permissions.QA_SCOPE_READ,
+  Permissions.QA_SCOPE_CREATE,
+  Permissions.QA_SCOPE_UPDATE,
+  Permissions.QA_SCOPE_APPROVE,
+  Permissions.QA_MANAGE
+), PositionController.getPositionById);
 router.put("/:id", requirePermission(Permissions.ORG_POSITION_UPDATE), requireSubscriptionFeature("admin_org_structure_position", { exact: false }), PositionController.updatePosition);
 router.delete("/:id", requirePermission(Permissions.ORG_POSITION_DELETE), requireSubscriptionFeature("admin_org_structure_position", { exact: false }), PositionController.deletePosition);
 

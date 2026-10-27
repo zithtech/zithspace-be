@@ -48,7 +48,7 @@ router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permi
  * @desc    Get projects where user is a member (alias for compatibility)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/user-projects', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)('work_projects_manage', { exact: true }), projectController_1.ProjectController.getUserProjects);
+router.get('/user-projects', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.QA_SCOPE_READ, permissions_1.Permissions.QA_SCOPE_CREATE, permissions_1.Permissions.QA_CASE_READ, permissions_1.Permissions.QA_RUN_READ, permissions_1.Permissions.QA_SUBMISSION_READ, permissions_1.Permissions.QA_APPROVAL_READ, permissions_1.Permissions.QA_MANAGE), (0, entitlements_middleware_1.requireSubscriptionFeature)('work_projects_manage', { exact: true }), projectController_1.ProjectController.getUserProjects);
 /**
  * @route   GET /api/projects/user-projects-for-tickets
  * @desc    Get projects where user is a member or project manager (for ticket creation)
