@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ReleasePlansController } from '@/controllers/releasePlansController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -69,7 +69,12 @@ router.get('/:id/available-tickets/:projectId', requirePermission(Permissions.TI
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, projectId, status, search, sortBy, sortOrder
  */
-router.get('/', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getReleasePlans);
+router.get('/', requireAnyPermission(
+  Permissions.TICKET_PLAN_READ,
+  Permissions.QA_SCOPE_READ,
+  Permissions.QA_SCOPE_CREATE,
+  Permissions.QA_MANAGE
+), ReleasePlansController.getReleasePlans);
 
 /**
  * @route   GET /api/release-plans/:id
