@@ -39,11 +39,19 @@ export const ticketStatuses = handle(async (req: AuthRequest, res: Response) => 
   ok(res, statuses);
 });
 
+import dayjs from 'dayjs';
+
 /** Trigger auto-generation sweep immediately on demand for the tenant */
 export const triggerAutoGenerate = handle(async (req: AuthRequest, res: Response) => {
   const { runAutoGenerateSweep } = require('../services/autoGenerate.service');
   const actor = actorOf(req);
-  const result = await runAutoGenerateSweep({ forceTenantId: actor.tenantId });
+  let targetPeriodDate: Date | undefined;
+  if (req.body?.periodKey) {
+    targetPeriodDate = dayjs(`${req.body.periodKey}-01`).toDate();
+  } else if (req.body?.targetPeriodDate) {
+    targetPeriodDate = new Date(req.body.targetPeriodDate);
+  }
+  const result = await runAutoGenerateSweep({ forceTenantId: actor.tenantId, targetPeriodDate });
   ok(res, result);
 });
 

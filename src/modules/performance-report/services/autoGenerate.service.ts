@@ -11,6 +11,32 @@ import * as settingsRepo from '../repositories/settings.repo';
 import { ModuleSetting } from '../types';
 import { findWorkedTickets, findLeaveRequests, TicketReportRow, LeaveReportRow } from '../repositories/reports.repo';
 import { uploadGeneratedReportToR2 } from '@/utils/r2Client';
+import axios from 'axios';
+
+export function cleanTicketNumber(ticketNumber?: string | null, tenantId?: string): string {
+  if (!ticketNumber) return '';
+  let cleaned = String(ticketNumber).trim();
+  if (tenantId) {
+    cleaned = cleaned.replace(new RegExp(`^${tenantId}_`), '');
+  }
+  // Strip any leading UUID (32 hex or 36 hex with hyphens) followed by an underscore
+  cleaned = cleaned.replace(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_/, '');
+  cleaned = cleaned.replace(/^[0-9a-fA-F]{32}_/, '');
+  return cleaned;
+}
+
+export async function resolveAvatarBase64(url?: string | null): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url;
+  try {
+    const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 });
+    const contentType = res.headers['content-type'] || 'image/jpeg';
+    const base64 = Buffer.from(res.data).toString('base64');
+    return `data:${contentType};base64,${base64}`;
+  } catch (err) {
+    return url;
+  }
+}
 
 export interface SweepResult {
   scannedTenants: number;
@@ -269,7 +295,7 @@ export interface FullReportModel {
   };
 }
 
-export function buildPerformanceReportHtml(model: FullReportModel): string {
+export function buildPerformanceReportHtml(model: FullReportModel, avatarDataUrl?: string | null): string {
   const { member, range } = model;
   const overallBand = performanceBand(model.overall);
 
@@ -283,11 +309,22 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
   }
   const tkTotal = model.tickets.rows.length;
 
-  const stageCardsHtml = model.stages
+  // Filter out any disabled/excluded stages from overview cards
+  const enabledStages = model.stages.filter((s) => s.enabled);
+  const gridCols =
+    enabledStages.length <= 2
+      ? 2
+      : enabledStages.length === 3
+      ? 3
+      : enabledStages.length === 4
+      ? 4
+      : 5;
+
+  const stageCardsHtml = enabledStages
     .map((s) => {
       const band = performanceBand(s.score);
       return `
-        <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; background: #ffffff; ${s.enabled ? '' : 'opacity: 0.5;'}">
+        <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; background: #ffffff;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <span style="font-size: 12px; font-weight: 700; color: #334155;">${s.label}</span>
             <span style="font-size: 10px; font-weight: 700; color: #94a3b8;">${Number(s.weight)}%</span>
@@ -297,12 +334,18 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
               <span style="font-size: 22px; font-weight: 800; line-height: 1; color: ${scoreColor(s.score)};">${s.score ?? '—'}</span>
               <span style="font-size: 10px; font-weight: 700; color: #94a3b8;">/ 100</span>
             </div>
-            <span style="font-size: 10px; font-weight: 700; color: ${band.color};">${s.enabled ? band.label : 'Excluded'}</span>
+            <span style="font-size: 10px; font-weight: 700; color: ${band.color};">${band.label}</span>
           </div>
         </div>
       `;
     })
     .join('');
+
+  const isTicketsEnabled = model.stages.find((s) => s.key === 'tickets')?.enabled !== false;
+  const isTimeTrackingEnabled = model.stages.find((s) => s.key === 'time_tracking')?.enabled !== false;
+  const isDailyUpdatesEnabled = model.stages.find((s) => s.key === 'daily_updates')?.enabled !== false;
+  const isAttendanceEnabled = model.stages.find((s) => s.key === 'attendance')?.enabled !== false;
+  const isLeavesEnabled = model.stages.find((s) => s.key === 'leaves')?.enabled !== false;
 
   const ticketRowsHtml =
     model.tickets.rows.length === 0
@@ -312,6 +355,7 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
             const st = ticketStatusMeta(t.status);
             const del = delayOf(t.estimateHours || 0, t.trackedSeconds || 0);
             const ptsColor = scoreColor(t.points ?? null);
+            const cleanNum = cleanTicketNumber(t.ticketNumber) || t.ticketNumber;
             return `
               <tr style="border-bottom: 1px solid #f1f5f9;">
                 <td style="padding: 10px 12px; vertical-align: middle;">
@@ -319,7 +363,7 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
                     <span style="width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: ${st.color};"></span>
                     <div>
                       <div style="font-weight: 700; color: #2563eb; font-size: 11.5px; line-height: 1.2;">
-                        ${t.ticketNumber}
+                        ${cleanNum}
                         ${t.sprintName ? `<span style="margin-left: 4px; font-weight: 400; font-size: 9px; color: #94a3b8; background: #f1f5f9; padding: 2px 4px; border-radius: 4px;">${t.sprintName}</span>` : ''}
                       </div>
                       <div style="font-size: 11px; color: #334155; line-height: 1.3; margin-top: 2px;">${t.title}</div>
@@ -508,9 +552,13 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       <tbody>
         <tr>
           <td style="width: 68px; vertical-align: middle; border: none; padding: 0;">
-            <div style="width: 54px; height: 54px; border-radius: 50%; background: #3b82f6; color: #ffffff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 54px;">
-              ${member.name ? member.name.charAt(0).toUpperCase() : 'Z'}
-            </div>
+            ${
+              (avatarDataUrl || member.avatarUrl)
+                ? `<img src="${avatarDataUrl || member.avatarUrl}" alt="${member.name}" width="54" height="54" style="width: 54px; height: 54px; border-radius: 50%; object-fit: cover; display: block;" />`
+                : `<div style="width: 54px; height: 54px; border-radius: 50%; background: #3b82f6; color: #ffffff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 54px;">
+                    ${member.name ? member.name.charAt(0).toUpperCase() : 'Z'}
+                  </div>`
+            }
           </td>
           <td style="vertical-align: middle; border: none; padding: 0 12px;">
             <div style="font-size: 20px; font-weight: 800; line-height: 1.2; color: #0f172a;">${member.name}</div>
@@ -546,11 +594,14 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+    <div style="display: grid; grid-template-columns: repeat(${gridCols}, 1fr); gap: 10px;">
       ${stageCardsHtml}
     </div>
   </section>
 
+  ${
+    isTicketsEnabled
+      ? `
   <section class="card">
     <div class="section-title">Tickets</div>
     <div class="stat-cards-grid">
@@ -591,7 +642,13 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </tbody>
     </table>
   </section>
+  `
+      : ''
+  }
 
+  ${
+    isTimeTrackingEnabled
+      ? `
   <section class="card">
     <div class="section-title">Time Tracking</div>
     <div class="stat-cards-grid">
@@ -645,7 +702,13 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </tbody>
     </table>
   </section>
+  `
+      : ''
+  }
 
+  ${
+    isDailyUpdatesEnabled
+      ? `
   <section class="card">
     <div class="section-title">Daily Updates</div>
     <div class="stat-cards-grid">
@@ -683,7 +746,13 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </tbody>
     </table>
   </section>
+  `
+      : ''
+  }
 
+  ${
+    isAttendanceEnabled
+      ? `
   <section class="card">
     <div class="section-title">Attendance</div>
     <div class="stat-cards-grid">
@@ -722,7 +791,13 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </tbody>
     </table>
   </section>
+  `
+      : ''
+  }
 
+  ${
+    isLeavesEnabled
+      ? `
   <section class="card">
     <div class="section-title">Leaves</div>
     <div class="stat-cards-grid">
@@ -765,6 +840,9 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
       </tbody>
     </table>
   </section>
+  `
+      : ''
+  }
 
   <div style="padding-top: 16px; padding-bottom: 24px; text-align: center; font-size: 12px; font-weight: 600; color: #94a3b8;">
     Generated from <span style="color: #3b82f6;">Zukvo</span>
@@ -778,7 +856,14 @@ export function buildPerformanceReportHtml(model: FullReportModel): string {
 
 async function computeMemberReportData(
   client: TenantClient,
-  member: { id: string; name: string; workEmail?: string | null; position?: string | null; department?: string | null },
+  member: {
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    workEmail?: string | null;
+    position?: string | null;
+    department?: string | null;
+  },
   bounds: { periodKey: string; periodStart: string; periodEnd: string; periodLabel: string; rangeLabel: string },
   moduleSettings: ModuleSetting[]
 ): Promise<{
@@ -816,7 +901,7 @@ async function computeMemberReportData(
           else {
             byId.set(t.id, {
               id: t.id,
-              ticketNumber: t.ticketNumber,
+              ticketNumber: cleanTicketNumber(t.ticketNumber, client.tenantId),
               title: t.title,
               status: t.status,
               type: t.type,
@@ -1071,6 +1156,7 @@ async function computeMemberReportData(
     member: {
       id: member.id,
       name: member.name,
+      avatarUrl: member.avatarUrl,
       workEmail: member.workEmail,
       position: member.position,
       department: member.department,
@@ -1214,6 +1300,7 @@ export async function runAutoGenerateSweep(opts?: {
                 u.id,
                 u.name,
                 u.work_email AS "workEmail",
+                u.avatar_url AS "avatarUrl",
                 p.title AS "position",
                 d.name AS "department"
                FROM users u
@@ -1261,12 +1348,13 @@ export async function runAutoGenerateSweep(opts?: {
 
           // 2. Render PDF buffer via Puppeteer outside of DB transaction
           let pdfBase64 = '';
+          const avatarDataUrl = await resolveAvatarBase64(member.avatarUrl);
+          const html = buildPerformanceReportHtml(data.reportModel, avatarDataUrl);
           if (browser) {
-            const html = buildPerformanceReportHtml(data.reportModel);
             const pdfBuffer = await renderHtmlToPdfBuffer(browser, html);
             pdfBase64 = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
           } else {
-            pdfBase64 = `data:text/html;base64,${Buffer.from(buildPerformanceReportHtml(data.reportModel)).toString('base64')}`;
+            pdfBase64 = `data:text/html;base64,${Buffer.from(html).toString('base64')}`;
           }
 
           // 3. Upload to Cloudflare R2 / S3
