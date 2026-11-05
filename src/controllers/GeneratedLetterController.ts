@@ -99,9 +99,9 @@ export class GeneratedLetterController {
         throw new ValidationError('Tenant context and user authentication required');
       }
 
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
-      if (!templateId || !values) {
-        throw new ValidationError('Template ID and values map are required');
+      const { templateId, categoryId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
+      if (!templateId && !customContent) {
+        throw new ValidationError('Either a template ID or document content is required');
       }
 
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
@@ -109,11 +109,12 @@ export class GeneratedLetterController {
         req.tenantId,
         {
           templateId,
+          categoryId,
           referenceEntityId,
           referenceEntityType,
           documentNumber,
           documentName,
-          values,
+          values: values || {},
           customContent,
         },
         req.user.id,
@@ -153,9 +154,9 @@ export class GeneratedLetterController {
       }
 
       const { id } = req.params;
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
-      if (!templateId || !values) {
-        throw new ValidationError('Template ID and values map are required');
+      const { templateId, categoryId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
+      if (!templateId && !customContent) {
+        throw new ValidationError('Either a template ID or document content is required');
       }
 
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
@@ -164,11 +165,12 @@ export class GeneratedLetterController {
         id,
         {
           templateId,
+          categoryId,
           referenceEntityId,
           referenceEntityType,
           documentNumber,
           documentName,
-          values,
+          values: values || {},
           customContent,
         },
         req.user.id,
