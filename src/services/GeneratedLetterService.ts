@@ -9,12 +9,13 @@ import { getStructure } from '../modules/payroll/services/structure.service';
 import { calcStructure, CalcLineInput } from '../modules/payroll/services/structureCalc';
 
 export interface GenerateLetterDto {
-  templateId: string;
+  templateId?: string;
+  categoryId?: string;
   referenceEntityId?: string;
   referenceEntityType?: string;
   documentNumber?: string;
   documentName?: string;
-  values: Record<string, string>;
+  values?: Record<string, string>;
   customContent?: string;
 }
 
@@ -472,11 +473,16 @@ export class GeneratedLetterService {
   }
 
   static async generateLetter(tenantId: string, data: GenerateLetterDto, userId: string, ipAddress?: string) {
-    const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [data.templateId, tenantId]);
-    const template = tplRes.rows[0];
+    let template: any = null;
+    if (data.templateId) {
+      const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [data.templateId, tenantId]);
+      template = tplRes.rows[0];
 
-    if (!template) {
-      throw new Error('Template not found');
+      if (!template) {
+        throw new Error('Template not found');
+      }
+    } else if (!data.customContent) {
+      throw new Error('Either a template ID or document content is required');
     }
 
     const documentNumber = data.documentNumber || `DOC-${Date.now().toString().slice(-6)}`;
@@ -486,11 +492,14 @@ export class GeneratedLetterService {
     const generatedDocId = uuidRes.rows[0].id;
 
     // Generate PDF and DOCX before transaction
-    const snapshotContentToSave = data.customContent || template.editorContent;
-    const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
-    const templatePlaceholders = placeholdersRes.rows;
+    const snapshotContentToSave = data.customContent || (template ? template.editorContent : '');
+    let templatePlaceholders: any[] = [];
+    if (template) {
+      const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
+      templatePlaceholders = placeholdersRes.rows;
+    }
 
-    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
+    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values || {}, templatePlaceholders);
 
     let pageConfig: any = {};
     const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
@@ -506,12 +515,13 @@ export class GeneratedLetterService {
     const headerHtml = pageConfig.headerHtml;
     const footerHtml = pageConfig.footerHtml;
 
+    const docTitle = data.documentName || (template ? template.templateName : 'Document');
     const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
-    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
+    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${docTitle} - ${documentNumber}`, headerHtml, footerHtml);
 
-    const safeTemplateName = template.templateName.replace(/\s+/g, '_');
-    const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
-    const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
+    const safeDocName = (docTitle || 'Document').replace(/\s+/g, '_');
+    const pdfFileName = `${documentNumber}_${safeDocName}.pdf`;
+    const docxFileName = `${documentNumber}_${safeDocName}.docx`;
 
     const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, generatedDocId, 'application/pdf');
     const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, generatedDocId, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -520,13 +530,15 @@ export class GeneratedLetterService {
     try {
       await client.query('BEGIN');
 
+      const targetCategoryId = data.categoryId || (template ? template.categoryId : null) || null;
+
       await client.query(
         `INSERT INTO generated_documents (id, tenant_id, template_id, category_id, reference_entity_id, reference_entity_type, document_number, document_name, status, generated_by, snapshot_content, docx_file_path, pdf_file_path, generated_at) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'GENERATED', $9, $10, $11, $12, NOW())`,
-        [generatedDocId, tenantId, template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, data.documentName || null, userId, snapshotContentToSave, docxUrl, pdfUrl]
+        [generatedDocId, tenantId, template ? template.id : null, targetCategoryId, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, data.documentName || null, userId, snapshotContentToSave, docxUrl, pdfUrl]
       );
 
-      const valueEntries = Object.entries(data.values);
+      const valueEntries = Object.entries(data.values || {});
       if (valueEntries.length > 0) {
         for (const [key, val] of valueEntries) {
           await client.query(
@@ -545,7 +557,7 @@ export class GeneratedLetterService {
 
       await client.query(
         `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at) VALUES (gen_random_uuid(), $1, 'Letter Generation', $2, 'Generated', $3, $4, $5, NOW())`,
-        [tenantId, generatedDocId, userId, ipAddress || null, `Generated document "${documentNumber}" from template "${template.templateName}"`]
+        [tenantId, generatedDocId, userId, ipAddress || null, template ? `Generated document "${documentNumber}" from template "${template.templateName}"` : `Created document "${documentNumber}"`]
       );
 
       await client.query('COMMIT');
@@ -560,7 +572,7 @@ export class GeneratedLetterService {
   }
 
   static async updateGeneratedLetter(tenantId: string, id: string, data: GenerateLetterDto, userId: string, ipAddress?: string) {
-    const exRes = await pool.query(`SELECT id, template_id AS "templateId", document_number AS "documentNumber", snapshot_content AS "snapshotContent" FROM generated_documents WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, tenantId]);
+    const exRes = await pool.query(`SELECT id, template_id AS "templateId", category_id AS "categoryId", document_number AS "documentNumber", document_name AS "documentName", snapshot_content AS "snapshotContent" FROM generated_documents WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, tenantId]);
     const existingDoc = exRes.rows[0];
 
     if (!existingDoc) {
@@ -568,26 +580,31 @@ export class GeneratedLetterService {
     }
 
     let template = null;
-    if (data.templateId) {
-      const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [data.templateId, tenantId]);
+    const templateIdToUse = data.templateId !== undefined ? data.templateId : existingDoc.templateId;
+    if (templateIdToUse) {
+      const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [templateIdToUse, tenantId]);
       template = tplRes.rows[0];
     }
 
-    if (!template) {
-      throw new Error('Template not found');
+    if (!template && !data.customContent && !existingDoc.snapshotContent) {
+      throw new Error('Document content is required');
     }
 
     const documentNumber = data.documentNumber || existingDoc.documentNumber;
+    const documentName = data.documentName !== undefined ? data.documentName : existingDoc.documentName;
 
-    const snapshotContentToSave = data.customContent || ((existingDoc.templateId === data.templateId)
+    const snapshotContentToSave = data.customContent || ((existingDoc.templateId === templateIdToUse)
       ? existingDoc.snapshotContent
-      : template.editorContent);
+      : (template ? template.editorContent : existingDoc.snapshotContent || ''));
 
     // Pre-generate PDF and DOCX before transaction
-    const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
-    const templatePlaceholders = placeholdersRes.rows;
+    let templatePlaceholders: any[] = [];
+    if (template) {
+      const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
+      templatePlaceholders = placeholdersRes.rows;
+    }
 
-    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
+    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values || {}, templatePlaceholders);
 
     let pageConfig: any = {};
     const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
@@ -603,12 +620,13 @@ export class GeneratedLetterService {
     const headerHtml = pageConfig.headerHtml;
     const footerHtml = pageConfig.footerHtml;
 
+    const docTitle = documentName || (template ? template.templateName : 'Document');
     const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
-    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
+    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${docTitle} - ${documentNumber}`, headerHtml, footerHtml);
 
-    const safeTemplateName = template.templateName.replace(/\s+/g, '_');
-    const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
-    const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
+    const safeDocName = (docTitle || 'Document').replace(/\s+/g, '_');
+    const pdfFileName = `${documentNumber}_${safeDocName}.pdf`;
+    const docxFileName = `${documentNumber}_${safeDocName}.docx`;
 
     const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, existingDoc.id, 'application/pdf');
     const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, existingDoc.id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -617,14 +635,16 @@ export class GeneratedLetterService {
     try {
       await client.query('BEGIN');
 
+      const targetCategoryId = data.categoryId !== undefined ? data.categoryId : (template ? template.categoryId : existingDoc.categoryId);
+
       await client.query(
         `UPDATE generated_documents SET template_id = $1, category_id = $2, reference_entity_id = $3, reference_entity_type = $4, document_number = $5, snapshot_content = $6, pdf_file_path = $7, docx_file_path = $8, document_name = $9 WHERE id = $10`,
-        [template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, snapshotContentToSave, pdfUrl, docxUrl, data.documentName || null, existingDoc.id]
+        [template ? template.id : (data.templateId !== undefined ? data.templateId : existingDoc.templateId), targetCategoryId, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, snapshotContentToSave, pdfUrl, docxUrl, documentName || null, existingDoc.id]
       );
 
       await client.query(`DELETE FROM generated_document_values WHERE generated_document_id = $1`, [existingDoc.id]);
 
-      const valueEntries = Object.entries(data.values);
+      const valueEntries = Object.entries(data.values || {});
       if (valueEntries.length > 0) {
         for (const [key, val] of valueEntries) {
           await client.query(
@@ -672,6 +692,13 @@ export class GeneratedLetterService {
       htmlContent = htmlContent.replace(configRegex, '');
     }
 
+    // Convert body images to base64 so Puppeteer doesn't stall or fail on external assets
+    try {
+      htmlContent = await GeneratedLetterService.replaceImagesToBase64(htmlContent);
+    } catch (e) {
+      console.warn('Could not pre-convert body images to base64 for PDF', e);
+    }
+
     const fullHtml = `
       <!DOCTYPE html>
       <html>
@@ -679,7 +706,7 @@ export class GeneratedLetterService {
           <meta charset="utf-8">
           <style>
             body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; }
-            table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+            table { width: 100%; border-collapse: collapse; margin: 16px 0; page-break-inside: auto; break-inside: auto; }
             th, td { border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; }
             th { background-color: #f3f4f6; font-weight: 600; }
             table[data-layout="side-by-side"], table[data-layout="side-by-side"] th, table[data-layout="side-by-side"] td,
@@ -690,10 +717,40 @@ export class GeneratedLetterService {
               background: transparent !important;
               padding: 4px 0 !important;
             }
+            img {
+              max-width: 100% !important;
+              height: auto !important;
+              object-fit: contain;
+            }
+            table img {
+              max-width: 100% !important;
+              max-height: 125px !important;
+              width: auto;
+              height: auto;
+              object-fit: contain;
+            }
+            table, tr, td, th {
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
             h1, h2, h3 { color: #111827; margin-top: 24px; margin-bottom: 12px; }
             p { margin-bottom: 12px; }
+            ul {
+              list-style-type: disc !important;
+              padding-left: 24px !important;
+              margin: 8px 0 12px !important;
+            }
+            ol {
+              list-style-type: decimal !important;
+              padding-left: 24px !important;
+              margin: 8px 0 12px !important;
+            }
+            li {
+              display: list-item !important;
+              margin-bottom: 4px !important;
+            }
             .html2pdf__page-break hr { display: none !important; border: none !important; opacity: 0 !important; }
-            .logo-placeholder-btn { display: none !important; }
+            .logo-placeholder-btn, button[data-type="logo-upload"] { display: none !important; }
           </style>
         </head>
         <body>
@@ -988,12 +1045,65 @@ export class GeneratedLetterService {
   }
 
   /**
+   * Sanitizes HTML for html-to-docx converter.
+   * Fixes a known bug in html-to-docx where td/th cells with percentage or non-standard widths
+   * cause "The string contains invalid characters. Invalid XML name: @w" in xmlbuilder2.
+   */
+  static sanitizeHtmlForDocx(html: string): string {
+    if (!html) return html;
+    // 1. Remove empty logo upload buttons if not replaced
+    let sanitized = html.replace(/<button[^>]*data-type="logo-upload"[^>]*><\/button>/gi, '');
+
+    // 2. Normalize table cell widths in style attributes
+    sanitized = sanitized.replace(/<(td|th)([^>]*?)style="([^"]*?)"([^>]*?)>/gi, (match, tag, before, style, after) => {
+      const cleanedStyle = style.replace(/width\s*:\s*([^;"]+)/gi, (wMatch, val) => {
+        const trimmed = val.trim();
+        const pctMatch = trimmed.match(/^(\d+(?:\.\d+)?)%$/);
+        if (pctMatch) {
+          // Standard Word document content area width is ~624px (6.5 inches between 1-inch margins)
+          const px = Math.max(20, Math.round((parseFloat(pctMatch[1]) / 100) * 624));
+          return `width: ${px}px`;
+        }
+        if (/^(\d+(?:\.\d+)?)(px|pt|cm|in)$/i.test(trimmed)) {
+          return `width: ${trimmed}`;
+        }
+        // Non-standard units (auto, fit-content, initial) cause crash in html-to-docx
+        return '';
+      });
+      return `<${tag}${before}style="${cleanedStyle}"${after}>`;
+    });
+
+    // 3. Normalize image widths to ensure they fit within DOCX page boundaries
+    sanitized = sanitized.replace(/<img([^>]*?)>/gi, (match, attrs) => {
+      // Check if width is already defined
+      const widthMatch = attrs.match(/width=["']?(\d+)/i);
+      const styleWidthMatch = attrs.match(/style=["'][^"']*width:\s*(\d+)px/i);
+      const widthVal = widthMatch ? parseInt(widthMatch[1], 10) : (styleWidthMatch ? parseInt(styleWidthMatch[1], 10) : 0);
+
+      if (widthVal > 580) {
+        return `<img${attrs.replace(/width=["']?\d+[^"'\s]*["']?/i, 'width="580"')}>`;
+      } else if (!widthMatch && !styleWidthMatch) {
+        // Safe default width for logos and pictures in Word
+        return `<img width="180"${attrs}>`;
+      }
+      return match;
+    });
+
+    return sanitized;
+  }
+
+  /**
    * Generate DOCX buffer from substituted HTML/text using html-to-docx library
    */
   static async generateDOCXBuffer(htmlContent: string, documentTitle: string, headerHtml?: string, footerHtml?: string): Promise<Buffer> {
     // 1. Filter out the zith-page-config script tag so it doesn't render in the document
     const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
     htmlContent = htmlContent.replace(configRegex, '');
+
+    // 2. Sanitize HTML to prevent "Invalid XML name: @w" in html-to-docx
+    htmlContent = this.sanitizeHtmlForDocx(htmlContent);
+    let sanitizedHeader = headerHtml ? this.sanitizeHtmlForDocx(headerHtml) : undefined;
+    let sanitizedFooter = footerHtml ? this.sanitizeHtmlForDocx(footerHtml) : undefined;
 
     const wrappedHtml = `<!DOCTYPE html>
 <html>
@@ -1013,8 +1123,8 @@ export class GeneratedLetterService {
 </body>
 </html>`;
 
-    let processedHeader = headerHtml ? await GeneratedLetterService.replaceImagesToBase64(headerHtml) : undefined;
-    let processedFooter = footerHtml ? await GeneratedLetterService.replaceImagesToBase64(footerHtml) : undefined;
+    let processedHeader = sanitizedHeader ? await GeneratedLetterService.replaceImagesToBase64(sanitizedHeader) : undefined;
+    let processedFooter = sanitizedFooter ? await GeneratedLetterService.replaceImagesToBase64(sanitizedFooter) : undefined;
 
     if (processedHeader) {
       processedHeader = `<div style="text-align: center; width: 100%; margin-bottom: 20px;">${processedHeader}</div>`;
@@ -1023,13 +1133,24 @@ export class GeneratedLetterService {
       processedFooter = `<div style="text-align: center; width: 100%; font-size: 9pt; color: #94a3b8; margin-top: 20px;">${processedFooter}</div>`;
     }
 
-    const buffer = await HTMLtoDOCX(wrappedHtml, processedHeader, {
-      title: documentTitle,
-      margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch margins (in twips)
-      font: 'Inter'
-    }, processedFooter);
+    try {
+      const buffer = await HTMLtoDOCX(wrappedHtml, processedHeader, {
+        title: documentTitle,
+        margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch margins (in twips)
+        font: 'Inter'
+      }, processedFooter);
 
-    return buffer as Buffer;
+      return buffer as Buffer;
+    } catch (docxErr) {
+      console.warn('HTMLtoDOCX failed with rich markup, falling back to simplified content:', docxErr);
+      const fallbackHtml = `<!DOCTYPE html><html><body>${htmlContent.replace(/style="[^"]*"/gi, '')}</body></html>`;
+      const fallbackBuffer = await HTMLtoDOCX(fallbackHtml, undefined, {
+        title: documentTitle,
+        margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+        font: 'Inter'
+      });
+      return fallbackBuffer as Buffer;
+    }
   }
 
   static async deleteGeneratedLetter(tenantId: string, id: string, userId: string, ipAddress?: string) {
