@@ -424,7 +424,7 @@ export class TimeTrackingController {
         return;
       }
 
-      const { projectId, ticketId, description, billable, billingRate, startTime, endTime, userId } = req.body;
+      const { projectId, ticketId, description, billable, billingRate, startTime, endTime, userId, meetingType } = req.body;
       const targetUserId = userId || req.user.id;
 
       if (!startTime || !endTime) {
@@ -442,6 +442,7 @@ export class TimeTrackingController {
           userId: targetUserId,
           projectId: projectId || null,
           ticketId: ticketId || null,
+          meetingType: meetingType || null,
           description,
           billable: billable || false,
           billingRate: billingRate || null,
@@ -481,6 +482,7 @@ export class TimeTrackingController {
           afterData: {
             projectId: newEntry.projectId,
             ticketId: newEntry.ticketId,
+            meetingType: newEntry.meetingType,
             description: newEntry.description,
             billable: newEntry.billable,
             billingRate: newEntry.billingRate,
@@ -505,7 +507,7 @@ export class TimeTrackingController {
         return;
       }
 
-      const { projectId, ticketId, description, billable, billingRate } = req.body;
+      const { projectId, ticketId, description, billable, billingRate, meetingType } = req.body;
 
       /* 
       // Stop any running timers for this user
@@ -548,6 +550,7 @@ export class TimeTrackingController {
           userId: req.user.id,
           projectId: projectId || null,
           ticketId: ticketId || null,
+          meetingType: meetingType || null,
           description,
           billable: billable || false,
           billingRate: billingRate || null,
@@ -581,6 +584,7 @@ export class TimeTrackingController {
           afterData: {
             projectId: newEntry.projectId,
             ticketId: newEntry.ticketId,
+            meetingType: newEntry.meetingType,
             description: newEntry.description,
             billable: newEntry.billable,
             billingRate: newEntry.billingRate,
@@ -827,7 +831,7 @@ export class TimeTrackingController {
       }
 
       const { id } = req.params;
-      const { projectId, ticketId, description, billable, billingRate, startTime, endTime, logId } = req.body;
+      const { projectId, ticketId, description, billable, billingRate, startTime, endTime, logId, meetingType } = req.body;
 
       let duration = undefined;
       let newStartTime = startTime ? new Date(startTime) : undefined;
@@ -933,6 +937,7 @@ export class TimeTrackingController {
         data: {
           ...(projectId !== undefined && { projectId: projectId || null }),
           ...(ticketId !== undefined && { ticketId: ticketId || null }),
+          ...(meetingType !== undefined && { meetingType: meetingType || null }),
           ...(description !== undefined && { description }),
           ...(billable !== undefined && { billable }),
           ...(billingRate !== undefined && { billingRate }),
