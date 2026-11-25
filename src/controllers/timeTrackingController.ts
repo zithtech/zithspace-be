@@ -1,9 +1,20 @@
 import { Response } from "express";
-import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import { Permissions } from "@/types/permissions";
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
+import {
+  getTimeTrackingEntries,
+  getTimeTrackingEntryById,
+  createManualTimeEntry,
+  startTimerEntry,
+  pauseTimerEntry,
+  resumeTimerEntry,
+  stopTimerEntry,
+  updateTimeTrackingEntry,
+  deleteTimeTrackingEntry,
+  TimeTrackingEntry,
+} from "@/models/timeTracking.model";
 
 /**
  * Performance status tiers for tracked weekday hours (lower-inclusive, upper-exclusive).
@@ -142,7 +153,6 @@ function safeTimeZone(tz?: unknown): string {
 }
 
 export class TimeTrackingController {
-
   static async getEntries(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user || !req.tenantId) {
@@ -152,66 +162,47 @@ export class TimeTrackingController {
 
       const { ticketId, projectId, userId, allUsers, startDate, endDate, page, limit } = req.query;
 
-      const whereClause: any = { tenantId: req.tenantId };
+      let filterUserId: string | undefined = req.user.id;
 
       if (ticketId) {
         // Viewing specific ticket details: anyone who views a ticket should see all time entries for that ticket
         if (userId) {
-          whereClause.userId = String(userId);
+          filterUserId = String(userId);
+        } else {
+          filterUserId = undefined;
         }
       } else {
         // Global time tracking listing: enforce standard security permissions
         if (allUsers === 'true' || (userId && userId !== req.user.id)) {
           const canReadTeam = await RBACService.hasPermission(req.user.id, req.tenantId, Permissions.TIME_TRACKING_TEAM_READ);
           if (canReadTeam) {
-            if (userId) whereClause.userId = String(userId);
+            if (userId) filterUserId = String(userId);
+            else filterUserId = undefined;
           } else {
-            whereClause.userId = req.user.id;
+            filterUserId = req.user.id;
           }
         } else {
-          whereClause.userId = req.user.id;
+          filterUserId = req.user.id;
         }
-      }
-
-      if (ticketId) {
-        whereClause.ticketId = String(ticketId);
-      }
-
-      if (projectId) {
-        whereClause.projectId = String(projectId);
-      }
-
-      if (startDate || endDate) {
-        whereClause.startTime = {};
-        if (startDate) whereClause.startTime.gte = new Date(startDate as string);
-        if (endDate) whereClause.startTime.lte = new Date(endDate as string);
       }
 
       const pageNum = parseInt(page as string) || 1;
       const limitNum = parseInt(limit as string) || 0;
 
-      const queryOptions: any = {
-        where: whereClause,
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        },
-        orderBy: { startTime: 'desc' }
-      };
-
-      if (limitNum > 0) {
-        queryOptions.skip = (pageNum - 1) * limitNum;
-        queryOptions.take = limitNum;
-      }
-
-      const entries = await prisma.timeTrackingEntry.findMany(queryOptions);
+      const { entries, total } = await getTimeTrackingEntries({
+        tenantId: req.tenantId,
+        userId: filterUserId,
+        ticketId: ticketId ? String(ticketId) : undefined,
+        projectId: projectId ? String(projectId) : undefined,
+        startDate: startDate ? String(startDate) : undefined,
+        endDate: endDate ? String(endDate) : undefined,
+        page: pageNum,
+        limit: limitNum,
+      });
 
       let responsePayload: any = { success: true, serverTime: new Date().toISOString(), data: entries };
 
-      if (limitNum > 0) {
-        const total = await prisma.timeTrackingEntry.count({ where: whereClause });
+      if (limitNum > 0 && total !== undefined) {
         responsePayload.pagination = {
           page: pageNum,
           limit: limitNum,
@@ -247,37 +238,18 @@ export class TimeTrackingController {
 
       const { projectId, userId, userIds, startDate, endDate, timezone } = req.query;
 
-      const whereClause: any = { tenantId: req.tenantId };
-
       // Members filter: userIds (comma-separated) takes precedence, else single userId.
       const memberIds = typeof userIds === "string" && userIds.trim()
         ? userIds.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
-      if (memberIds.length > 0) {
-        whereClause.userId = { in: memberIds };
-      } else if (userId) {
-        whereClause.userId = String(userId);
-      }
 
-      if (projectId) {
-        whereClause.projectId = String(projectId);
-      }
-
-      if (startDate || endDate) {
-        whereClause.startTime = {};
-        if (startDate) whereClause.startTime.gte = new Date(startDate as string);
-        if (endDate) whereClause.startTime.lte = new Date(endDate as string);
-      }
-
-      const entries = await prisma.timeTrackingEntry.findMany({
-        where: whereClause,
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: "desc" } },
-        },
-        orderBy: { startTime: "desc" },
+      const { entries } = await getTimeTrackingEntries({
+        tenantId: req.tenantId,
+        userId: memberIds.length === 0 && userId ? String(userId) : undefined,
+        userIds: memberIds.length > 0 ? memberIds : undefined,
+        projectId: projectId ? String(projectId) : undefined,
+        startDate: startDate ? String(startDate) : undefined,
+        endDate: endDate ? String(endDate) : undefined,
       });
 
       const tz = safeTimeZone(timezone);
@@ -298,119 +270,75 @@ export class TimeTrackingController {
         const weekday = weekdayFmt.format(start); // e.g. "Saturday"
         const key = `${entry.userId}_${dateKey}`;
         if (!groups.has(key)) {
-          groups.set(key, { userId: entry.userId, user: entry.user, dateKey, weekday, entries: [] });
+          groups.set(key, {
+            userId: entry.userId,
+            user: entry.user,
+            dateKey,
+            weekday,
+            entries: [],
+          });
         }
         groups.get(key)!.entries.push(entry);
       }
 
-      const rows = Array.from(groups.values()).map((g) => {
-        const { netSeconds, sessionCount } = computeNetDuration(g.entries as PerfEntry[], nowMs);
+      const rows: any[] = [];
+      for (const group of Array.from(groups.values())) {
+        const { netSeconds, sessionCount } = computeNetDuration(group.entries, nowMs);
         const hours = netSeconds / 3600;
-        const isWeekend = g.weekday === "Saturday" || g.weekday === "Sunday";
-        const status = classifyPerformance(hours, g.weekday);
+        const status = classifyPerformance(hours, group.weekday);
 
-        // Unique tickets worked on that day
-        const ticketIds = new Set<string>();
-        // Raw per-project breakdown (auxiliary; net hours above is authoritative)
-        const projectMap = new Map<string, { projectId: string; projectName: string; seconds: number }>();
-        for (const e of g.entries) {
-          if (e.ticketId) ticketIds.add(e.ticketId);
-          const pid = e.projectId || "none";
-          const pname = e.project?.name || "No Project";
-          if (!projectMap.has(pid)) projectMap.set(pid, { projectId: pid, projectName: pname, seconds: 0 });
-          projectMap.get(pid)!.seconds += e.duration || 0;
+        const projectBreakdownMap = new Map<string, { projectId: string; projectName: string; entries: any[] }>();
+        for (const e of group.entries) {
+          const pId = e.projectId || "none";
+          const pName = e.project?.name || "No Project";
+          if (!projectBreakdownMap.has(pId)) {
+            projectBreakdownMap.set(pId, { projectId: pId, projectName: pName, entries: [] });
+          }
+          projectBreakdownMap.get(pId)!.entries.push(e);
         }
 
-        return {
-          userId: g.userId,
-          user: g.user,
-          date: g.dateKey,
-          weekday: g.weekday,
-          isWeekend,
+        const projectBreakdown = Array.from(projectBreakdownMap.values())
+          .map((pb) => ({
+            projectId: pb.projectId,
+            projectName: pb.projectName,
+            seconds: computeNetDuration(pb.entries, nowMs).netSeconds,
+          }))
+          .sort((a, b) => b.seconds - a.seconds);
+
+        const uniqueTickets = new Set(group.entries.map((e) => e.ticketId).filter(Boolean)).size;
+
+        rows.push({
+          id: `${group.userId}_${group.dateKey}`,
+          userId: group.userId,
+          user: group.user,
+          date: group.dateKey,
+          weekday: group.weekday,
           totalSeconds: netSeconds,
-          totalHours: Number(hours.toFixed(2)),
           formattedDuration: formatHoursMinutes(netSeconds),
           status,
+          ticketCount: uniqueTickets,
           sessionCount,
-          ticketCount: ticketIds.size,
-          projectBreakdown: Array.from(projectMap.values()).sort((a, b) => b.seconds - a.seconds),
-          entries: g.entries,
-        };
-      });
+          projectBreakdown,
+          entries: group.entries,
+        });
+      }
 
-      // Sort newest day first, then by member name for stable display.
       rows.sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-        return (a.user?.name || "").localeCompare(b.user?.name || "");
+        const d = b.date.localeCompare(a.date);
+        if (d !== 0) return d;
+        return b.totalSeconds - a.totalSeconds;
       });
 
-      // Summary metrics for the info cards above the table.
-      const memberSet = new Set(rows.map((r) => r.userId));
-      const projectSet = new Set<string>();
-      let totalSeconds = 0;
-      
-      const statusCounts: Record<string, number> = {};
-      const statusMembers: Record<string, Set<string>> = {};
-      const trackedMembersMap = new Map<string, any>();
-
-      for (const r of rows) {
-        totalSeconds += r.totalSeconds;
-        for (const p of r.projectBreakdown) if (p.projectId !== "none") projectSet.add(p.projectId);
-        
-        statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
-        if (!statusMembers[r.status]) statusMembers[r.status] = new Set();
-        statusMembers[r.status].add(r.userId);
-
-        if (!trackedMembersMap.has(r.userId)) {
-          trackedMembersMap.set(r.userId, {
-            id: r.userId,
-            name: r.user?.name || "Unknown",
-            email: r.user?.workEmail || "",
-            avatarUrl: r.user?.avatarUrl
-          });
-        }
-      }
-
-      const statusMemberCounts: Record<string, number> = {};
-      for (const status of Object.keys(statusMembers)) {
-        statusMemberCounts[status] = statusMembers[status].size;
-      }
-
-      const summary = {
-        memberCount: memberSet.size,
-        dayCount: rows.length,
-        projectCount: projectSet.size,
-        totalSeconds,
-        totalHours: Number((totalSeconds / 3600).toFixed(2)),
-        formattedTotal: formatHoursMinutes(totalSeconds),
-        avgSecondsPerMember: memberSet.size ? Math.round(totalSeconds / memberSet.size) : 0,
-        statusCounts,
-        statusMemberCounts,
-        trackedMembers: Array.from(trackedMembersMap.values()),
-      };
-
-      // Legend so the UI renders the Hours → Status table from a single source of truth.
       const legend = {
-        weekday: PERFORMANCE_TIERS.map((t) => ({
-          label: t.label,
-          minHours: t.min,
-          maxHours: t.max,
-        })),
-        weekend: [
-          { day: "Saturday", label: WEEKEND_STATUS.Saturday },
-          { day: "Sunday", label: WEEKEND_STATUS.Sunday },
-        ],
+        tiers: PERFORMANCE_TIERS,
+        weekend: WEEKEND_STATUS,
       };
-
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 15;
-      const total = rows.length;
-      const paginatedRows = rows.slice((page - 1) * limit, page * limit);
 
       res.status(200).json({
         success: true,
         serverTime: new Date().toISOString(),
-        data: { timezone: tz, summary, legend, total, rows: paginatedRows },
+        timezone: tz,
+        data: { rows, legend },
       } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
@@ -436,35 +364,18 @@ export class TimeTrackingController {
       const end = new Date(endTime);
       const duration = Math.floor((end.getTime() - start.getTime()) / 1000);
 
-      const newEntry = await prisma.timeTrackingEntry.create({
-        data: {
-          tenantId: req.tenantId,
-          userId: targetUserId,
-          projectId: projectId || null,
-          ticketId: ticketId || null,
-          meetingType: meetingType || null,
-          description,
-          billable: billable || false,
-          billingRate: billingRate || null,
-          startTime: start,
-          endTime: end,
-          duration,
-          status: "MANUAL_UPDATED",
-          logs: {
-            createMany: {
-              data: [
-                { action: "STARTED", createdAt: start, tenantId: req.tenantId },
-                { action: "STOPPED", createdAt: end, tenantId: req.tenantId }
-              ]
-            }
-          }
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
+      const newEntry = await createManualTimeEntry({
+        tenantId: req.tenantId,
+        userId: targetUserId,
+        projectId: projectId || null,
+        ticketId: ticketId || null,
+        meetingType: meetingType || null,
+        description,
+        billable: billable || false,
+        billingRate: billingRate || null,
+        startTime: start,
+        endTime: end,
+        duration,
       });
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -509,64 +420,15 @@ export class TimeTrackingController {
 
       const { projectId, ticketId, description, billable, billingRate, meetingType } = req.body;
 
-      /* 
-      // Stop any running timers for this user
-      const runningTimer = await prisma.timeTrackingEntry.findFirst({
-        where: { tenantId: req.tenantId, userId: req.user.id, status: { in: ["RUNNING", "PAUSED"] } }
-      });
-
-      if (runningTimer) {
-        const endTime = new Date();
-        let additionalDuration = 0;
-        
-        if (runningTimer.status === "RUNNING") {
-          const lastLog = await prisma.timeTrackingLog.findFirst({
-            where: { timeTrackingId: runningTimer.id },
-            orderBy: { createdAt: 'desc' }
-          });
-          const lastActiveTime = lastLog ? lastLog.createdAt : runningTimer.startTime;
-          additionalDuration = Math.floor((endTime.getTime() - lastActiveTime.getTime()) / 1000);
-        }
-        
-        const totalDuration = (runningTimer.duration || 0) + additionalDuration;
-
-        await prisma.timeTrackingEntry.update({
-          where: { id: runningTimer.id },
-          data: { 
-            status: "STOPPED", 
-            endTime, 
-            duration: totalDuration,
-            logs: {
-              create: { action: "STOPPED", tenantId: req.tenantId }
-            }
-          }
-        });
-      }
-      */
-
-      const newEntry = await prisma.timeTrackingEntry.create({
-        data: {
-          tenantId: req.tenantId,
-          userId: req.user.id,
-          projectId: projectId || null,
-          ticketId: ticketId || null,
-          meetingType: meetingType || null,
-          description,
-          billable: billable || false,
-          billingRate: billingRate || null,
-          startTime: new Date(),
-          duration: 0,
-          status: "RUNNING",
-          logs: {
-            create: { action: "STARTED", tenantId: req.tenantId }
-          }
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
+      const newEntry = await startTimerEntry({
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        projectId: projectId || null,
+        ticketId: ticketId || null,
+        meetingType: meetingType || null,
+        description,
+        billable: billable || false,
+        billingRate: billingRate || null,
       });
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -609,42 +471,13 @@ export class TimeTrackingController {
 
       const { id } = req.params;
 
-      const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
-
+      const entry = await getTimeTrackingEntryById(id, req.tenantId);
       if (!entry || entry.status !== "RUNNING") {
         res.status(400).json({ success: false, error: "Timer is not RUNNING." } as ApiResponse);
         return;
       }
 
-      const pauseTime = new Date();
-      const lastLog = await prisma.timeTrackingLog.findFirst({
-        where: { timeTrackingId: id },
-        orderBy: { createdAt: 'desc' }
-      });
-      const lastActiveTime = lastLog ? lastLog.createdAt : entry.startTime;
-      const additionalDuration = Math.floor((pauseTime.getTime() - lastActiveTime.getTime()) / 1000);
-      const totalDuration = (entry.duration || 0) + additionalDuration;
-
-      const updatedEntry = await prisma.timeTrackingEntry.update({
-        where: { id },
-        data: {
-          status: "PAUSED",
-          duration: totalDuration,
-          pauseSource: "manual",
-          pausedAt: pauseTime,
-          logs: {
-            create: { action: "PAUSED", tenantId: req.tenantId }
-          }
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
-      });
+      const updatedEntry = await pauseTimerEntry(id, req.tenantId);
 
       // ─── Activity log ───────────────────────────────────────────────
       if (updatedEntry) {
@@ -685,32 +518,13 @@ export class TimeTrackingController {
 
       const { id } = req.params;
 
-      const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
-
+      const entry = await getTimeTrackingEntryById(id, req.tenantId);
       if (!entry || entry.status !== "PAUSED") {
         res.status(400).json({ success: false, error: "Timer is not PAUSED." } as ApiResponse);
         return;
       }
 
-      const updatedEntry = await prisma.timeTrackingEntry.update({
-        where: { id },
-        data: {
-          status: "RUNNING",
-          pauseSource: null,
-          pausedAt: null,
-          logs: {
-            create: { action: "RESUMED", tenantId: req.tenantId }
-          }
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
-      });
+      const updatedEntry = await resumeTimerEntry(id, req.tenantId);
 
       // ─── Activity log ───────────────────────────────────────────────
       if (updatedEntry) {
@@ -749,47 +563,13 @@ export class TimeTrackingController {
 
       const { id } = req.params;
 
-      const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
-
+      const entry = await getTimeTrackingEntryById(id, req.tenantId);
       if (!entry || entry.status === "STOPPED") {
         res.status(400).json({ success: false, error: "No active timer found with this ID." } as ApiResponse);
         return;
       }
-      // Calculate detailed progress
 
-      const endTime = new Date();
-      let additionalDuration = 0;
-
-      if (entry.status === "RUNNING") {
-        const lastLog = await prisma.timeTrackingLog.findFirst({
-          where: { timeTrackingId: id },
-          orderBy: { createdAt: 'desc' }
-        });
-        const lastActiveTime = lastLog ? lastLog.createdAt : entry.startTime;
-        additionalDuration = Math.floor((endTime.getTime() - lastActiveTime.getTime()) / 1000);
-      }
-
-      const totalDuration = (entry.duration || 0) + additionalDuration;
-
-      const updatedEntry = await prisma.timeTrackingEntry.update({
-        where: { id },
-        data: {
-          status: "STOPPED",
-          endTime,
-          duration: totalDuration,
-          logs: {
-            create: { action: "STOPPED", tenantId: req.tenantId }
-          }
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
-      });
+      const updatedEntry = await stopTimerEntry(id, req.tenantId);
 
       // ─── Activity log ───────────────────────────────────────────────
       if (updatedEntry) {
@@ -833,125 +613,22 @@ export class TimeTrackingController {
       const { id } = req.params;
       const { projectId, ticketId, description, billable, billingRate, startTime, endTime, logId, meetingType } = req.body;
 
-      let duration = undefined;
-      let newStartTime = startTime ? new Date(startTime) : undefined;
-      let newEndTime = endTime ? new Date(endTime) : undefined;
-
-      // Ensure valid dates
-      if (newStartTime && isNaN(newStartTime.getTime())) newStartTime = undefined;
-      if (newEndTime && isNaN(newEndTime.getTime())) newEndTime = undefined;
-
-      const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
-
+      const entry = await getTimeTrackingEntryById(id, req.tenantId);
       if (!entry) {
         res.status(404).json({ success: false, error: "Entry not found" } as ApiResponse);
         return;
       }
 
-      // Handle targeted log update OR broad truncation
-      if (newEndTime) {
-        const newEnd = new Date(newEndTime);
-
-        if (logId) {
-          // TARGETED UPDATE: Only update the specific log segment
-          await prisma.timeTrackingLog.update({
-            where: { id: logId, timeTrackingId: id },
-            data: { createdAt: newEnd }
-          });
-        } else {
-          // BROAD TRUNCATION: Delete all logs strictly after the new end time (manual entries)
-          await prisma.timeTrackingLog.deleteMany({
-            where: {
-              timeTrackingId: id,
-              createdAt: { gt: newEnd }
-            }
-          });
-
-          // Check if we need to close an open session
-          const lastLog = await prisma.timeTrackingLog.findFirst({
-            where: { timeTrackingId: id },
-            orderBy: { createdAt: 'desc' }
-          });
-
-          if (lastLog && (lastLog.action === 'STARTED' || lastLog.action === 'RESUMED')) {
-            await prisma.timeTrackingLog.create({
-              data: {
-                timeTrackingId: id,
-                tenantId: req.tenantId,
-                action: 'STOPPED',
-                createdAt: newEnd
-              }
-            });
-          }
-        }
-      }
-
-      // If newStartTime changed, update the earliest log
-      if (newStartTime) {
-        const earliestLog = await prisma.timeTrackingLog.findFirst({
-          where: { timeTrackingId: id },
-          orderBy: { createdAt: 'asc' }
-        });
-        if (earliestLog) {
-          await prisma.timeTrackingLog.update({
-            where: { id: earliestLog.id },
-            data: { createdAt: new Date(newStartTime) }
-          });
-        }
-      }
-
-      // Recalculate duration from all logs
-      const allLogs = await prisma.timeTrackingLog.findMany({
-        where: { timeTrackingId: id },
-        orderBy: { createdAt: 'asc' }
-      });
-
-      let totalDuration = 0;
-      let currentStart: Date | null = null;
-      for (const log of allLogs) {
-        if (log.action === 'STARTED' || log.action === 'RESUMED') {
-          currentStart = log.createdAt;
-        } else if ((log.action === 'PAUSED' || log.action === 'STOPPED') && currentStart) {
-          totalDuration += Math.floor((log.createdAt.getTime() - currentStart.getTime()) / 1000);
-          currentStart = null;
-        }
-      }
-      duration = totalDuration;
-
-      // Determine if we should update the overall entry endTime & status
-      let shouldUpdateOverallEndTime = !!newEndTime;
-      if (logId && newEndTime) {
-        const latestLog = await prisma.timeTrackingLog.findFirst({
-          where: { timeTrackingId: id },
-          orderBy: { createdAt: 'desc' }
-        });
-        if (latestLog && latestLog.id !== logId) {
-          shouldUpdateOverallEndTime = false;
-        }
-      }
-
-      const updatedEntry = await prisma.timeTrackingEntry.update({
-        where: { id },
-        data: {
-          ...(projectId !== undefined && { projectId: projectId || null }),
-          ...(ticketId !== undefined && { ticketId: ticketId || null }),
-          ...(meetingType !== undefined && { meetingType: meetingType || null }),
-          ...(description !== undefined && { description }),
-          ...(billable !== undefined && { billable }),
-          ...(billingRate !== undefined && { billingRate }),
-          ...(newStartTime && { startTime: new Date(newStartTime) }),
-          ...(shouldUpdateOverallEndTime && { endTime: new Date(newEndTime) }),
-          ...(duration !== undefined && { duration }),
-          ...(shouldUpdateOverallEndTime && { status: "MANUAL_UPDATED" })
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
-          logs: { orderBy: { createdAt: 'desc' } }
-        }
+      const updatedEntry = await updateTimeTrackingEntry(id, req.tenantId, {
+        projectId,
+        ticketId,
+        meetingType,
+        description,
+        billable,
+        billingRate,
+        startTime: startTime ? new Date(startTime) : undefined,
+        endTime: endTime ? new Date(endTime) : undefined,
+        logId,
       });
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -1011,18 +688,11 @@ export class TimeTrackingController {
 
       const { id } = req.params;
 
-      const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
-
+      const entry = await deleteTimeTrackingEntry(id, req.tenantId);
       if (!entry) {
         res.status(404).json({ success: false, error: "Entry not found" } as ApiResponse);
         return;
       }
-
-      await prisma.timeTrackingEntry.delete({
-        where: { id, tenantId: req.tenantId }
-      });
 
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
