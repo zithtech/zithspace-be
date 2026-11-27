@@ -1044,18 +1044,21 @@ async function computeMemberReportData(
       const bodEnabled = (duSetting?.config as any)?.bod !== false;
       const eodEnabled = (duSetting?.config as any)?.eod !== false;
       const { rows: duRows } = await client.query(
-        `SELECT id, "updateType" AS update_type, is_missed, created_at, total_hours_worked, mood
+        `SELECT id, "updateType" AS update_type, is_missed, created_at, date, total_hours_worked, mood
            FROM status_updates
           WHERE tenant_id = $1
             AND user_id = $2
-            AND created_at >= $3::date
-            AND created_at < ($4::date + interval '1 day')
-          ORDER BY created_at DESC`,
+            AND (
+              (date >= $3::date AND date <= $4::date)
+              OR (date IS NULL AND created_at >= $3::date AND created_at < ($4::date + interval '1 day'))
+            )
+          ORDER BY COALESCE(date, created_at::date) DESC, created_at DESC`,
         [client.tenantId, member.id, bounds.periodStart, bounds.periodEnd]
       );
+      const anyType = !bodEnabled && !eodEnabled;
       const validUpdates = duRows.filter((u: any) => {
-        if (u.is_missed) return false;
-        const t = u.update_type || 'EOD';
+        if (anyType) return true;
+        const t = (u.update_type || 'EOD').toUpperCase();
         if (t === 'BOD') return bodEnabled;
         if (t === 'EOD') return eodEnabled;
         return true;

@@ -548,9 +548,14 @@ export class DailyUpdateController {
             const projectIds = managedProjects.map((p) => p.id);
 
             allUpdates = allUpdates.filter((update) => {
-              const projectUpdates = update.projectUpdates as any[];
+              const rawPu = update.projectUpdates;
+              const projectUpdates: any[] = Array.isArray(rawPu)
+                ? rawPu
+                : typeof rawPu === 'string'
+                ? (() => { try { return JSON.parse(rawPu); } catch { return []; } })()
+                : [];
               return projectUpdates.some((pu) =>
-                projectIds.includes(pu.projectId),
+                projectIds.includes(pu?.projectId),
               );
             });
           }
@@ -558,8 +563,13 @@ export class DailyUpdateController {
           // Filter by specific project if requested
           if (projectId) {
             allUpdates = allUpdates.filter((update) => {
-              const projectUpdates = update.projectUpdates as any[];
-              return projectUpdates.some((pu) => pu.projectId === projectId);
+              const rawPu = update.projectUpdates;
+              const projectUpdates: any[] = Array.isArray(rawPu)
+                ? rawPu
+                : typeof rawPu === 'string'
+                ? (() => { try { return JSON.parse(rawPu); } catch { return []; } })()
+                : [];
+              return projectUpdates.some((pu) => pu && (pu.projectId === projectId || (pu as any).id === projectId));
             });
           }
 

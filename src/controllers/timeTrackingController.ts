@@ -331,7 +331,16 @@ export class TimeTrackingController {
 
       const legend = {
         tiers: PERFORMANCE_TIERS,
-        weekend: WEEKEND_STATUS,
+        weekday: PERFORMANCE_TIERS.map((t) => ({
+          label: t.label,
+          minHours: t.min,
+          maxHours: t.max,
+        })),
+        weekend: [
+          { day: "Saturday", label: "Weekend Warrior (Sat)" },
+          { day: "Sunday", label: "Weekend Warrior (Sun)" },
+        ],
+        weekendMap: WEEKEND_STATUS,
       };
 
       res.status(200).json({

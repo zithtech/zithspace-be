@@ -447,15 +447,35 @@ class DailyUpdateController {
                     });
                     const projectIds = managedProjects.map((p) => p.id);
                     allUpdates = allUpdates.filter((update) => {
-                        const projectUpdates = update.projectUpdates;
-                        return projectUpdates.some((pu) => projectIds.includes(pu.projectId));
+                        const rawPu = update.projectUpdates;
+                        const projectUpdates = Array.isArray(rawPu)
+                            ? rawPu
+                            : typeof rawPu === 'string'
+                                ? (() => { try {
+                                    return JSON.parse(rawPu);
+                                }
+                                catch {
+                                    return [];
+                                } })()
+                                : [];
+                        return projectUpdates.some((pu) => projectIds.includes(pu?.projectId));
                     });
                 }
                 // Filter by specific project if requested
                 if (projectId) {
                     allUpdates = allUpdates.filter((update) => {
-                        const projectUpdates = update.projectUpdates;
-                        return projectUpdates.some((pu) => pu.projectId === projectId);
+                        const rawPu = update.projectUpdates;
+                        const projectUpdates = Array.isArray(rawPu)
+                            ? rawPu
+                            : typeof rawPu === 'string'
+                                ? (() => { try {
+                                    return JSON.parse(rawPu);
+                                }
+                                catch {
+                                    return [];
+                                } })()
+                                : [];
+                        return projectUpdates.some((pu) => pu && (pu.projectId === projectId || pu.id === projectId));
                     });
                 }
                 return allUpdates;
