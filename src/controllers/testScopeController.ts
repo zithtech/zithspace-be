@@ -28,7 +28,8 @@ export const getTestScopes = async (req: Request, res: Response) => {
       allowed_products,
       sortBy = 'created_at',
       sortOrder = 'desc',
-      isApproval
+      isApproval,
+      summary
     } = req.query;
 
     const limit = parseInt(pageSize as string) || 10;
@@ -60,7 +61,11 @@ export const getTestScopes = async (req: Request, res: Response) => {
       .filter((p: any) => !userProjectIds.includes(p.id))
       .map((p: any) => p.name);
 
-    let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
+    const selectColumns = summary === 'true'
+      ? 'id, tenant_id, name, type, priority, status, qa_owner, start_date, end_date, created_at, updated_at'
+      : '*';
+
+    let query = `SELECT ${selectColumns} FROM qa_test_scopes WHERE tenant_id = $1`;
     let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
@@ -769,18 +774,19 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
 
     const allProjects = await prisma.project.findMany({
       where: { tenantId },
-      select: { id: true }
+      select: { id: true, name: true }
     });
-    const allProjectIds = allProjects.map((p: any) => p.id);
-    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+    const inaccessibleProjectNames = allProjects
+      .filter((p: any) => !userProjectIds.includes(p.id))
+      .map((p: any) => p.name);
 
-    let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
-    const params: any[] = [tenantId];
+    let whereClause = `WHERE tenant_id = $1`;
+    const baseParams: any[] = [tenantId];
     let paramIndex = 2;
 
-    if (inaccessibleProjectIds.length > 0) {
-      query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
-      params.push(inaccessibleProjectIds);
+    if (inaccessibleProjectNames.length > 0) {
+      whereClause += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      baseParams.push(inaccessibleProjectNames);
       paramIndex++;
     }
 
@@ -788,8 +794,8 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
     // project's scopes rather than the whole tenant's.
     const product = String(req.query.product ?? '').trim();
     if (product) {
-      query += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
-      params.push(product);
+      whereClause += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
+      baseParams.push(product);
       paramIndex++;
     }
 
@@ -799,56 +805,80 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
         .map(o => String(o).trim())
         .filter(Boolean);
       if (ownerArr.length === 1) {
-        query += ` AND qa_owner = $${paramIndex}`;
-        params.push(ownerArr[0]);
+        whereClause += ` AND qa_owner = $${paramIndex}`;
+        baseParams.push(ownerArr[0]);
         paramIndex++;
       } else if (ownerArr.length > 1) {
         const placeholders = ownerArr.map(() => `$${paramIndex++}`).join(',');
-        query += ` AND qa_owner IN (${placeholders})`;
-        params.push(...ownerArr);
+        whereClause += ` AND qa_owner IN (${placeholders})`;
+        baseParams.push(...ownerArr);
       }
     }
 
-    const { rows } = await pool.query(query, params);
+    const statsParams = [...baseParams];
+    const userParamIdx = paramIndex;
+    statsParams.push(userId || '');
+    const userNameParamIdx = paramIndex + 1;
+    statsParams.push(userName || '');
 
-    const stats: any = {
-      totalScopes: rows.length,
-      approved: rows.filter(r => r.status === 'Approved').length,
-      inReview: rows.filter(r => r.status === 'In Review').length,
-      inDraft: rows.filter(r => r.status === 'Draft').length,
-      rejected: rows.filter(r => r.status === 'Rejected').length,
-      // pendingApprovals = scopes where THIS user is the approver (matches approvals tab)
-      pendingApprovals: rows.filter(r => r.details?.approvalWorkflow?.user === userId && r.status !== 'Draft').length,
-      routedForApproval: rows.filter(r => r.status === 'In Review').length,
-      draftNoDueDate: rows.filter(r => r.status === 'Draft' && !r.end_date).length,
-      overdueCount: rows.filter(r => {
-        if (!r.end_date) return false;
-        const end = new Date(r.end_date);
-        end.setHours(0, 0, 0, 0);
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        return end < now;
-      }).length,
-      yearlyScopesData: []
-    };
+    const statsQuery = `
+      SELECT 
+        COUNT(*)::int AS "totalScopes",
+        COUNT(CASE WHEN status = 'Approved' THEN 1 END)::int AS "approved",
+        COUNT(CASE WHEN status = 'In Review' THEN 1 END)::int AS "inReview",
+        COUNT(CASE WHEN status = 'Draft' THEN 1 END)::int AS "inDraft",
+        COUNT(CASE WHEN status = 'Rejected' THEN 1 END)::int AS "rejected",
+        COUNT(CASE WHEN details->'approvalWorkflow'->>'user' = $${userParamIdx} AND status != 'Draft' THEN 1 END)::int AS "pendingApprovals",
+        COUNT(CASE WHEN status = 'In Review' THEN 1 END)::int AS "routedForApproval",
+        COUNT(CASE WHEN status = 'Draft' AND end_date IS NULL THEN 1 END)::int AS "draftNoDueDate",
+        COUNT(CASE WHEN end_date IS NOT NULL AND end_date < CURRENT_DATE THEN 1 END)::int AS "overdueCount",
+        COUNT(CASE WHEN LOWER(qa_owner) = LOWER($${userNameParamIdx}) THEN 1 END)::int AS "mineScopes"
+      FROM qa_test_scopes
+      ${whereClause}
+    `;
 
     const currentYear = new Date().getFullYear();
+    const yearlyParams = [...baseParams, currentYear];
+    const yearlyYearIdx = baseParams.length + 1;
+    const yearlyQuery = `
+      SELECT 
+        EXTRACT(MONTH FROM created_at)::int AS month_num,
+        COUNT(*)::int AS count
+      FROM qa_test_scopes
+      ${whereClause}
+        AND created_at IS NOT NULL
+        AND EXTRACT(YEAR FROM created_at) = $${yearlyYearIdx}
+      GROUP BY EXTRACT(MONTH FROM created_at)
+    `;
+
+    const [statsResult, yearlyResult] = await Promise.all([
+      pool.query(statsQuery, statsParams),
+      pool.query(yearlyQuery, yearlyParams)
+    ]);
+
+    const row = statsResult.rows[0] || {};
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const yearlyScopesMap: Record<string, number> = {};
-    rows.forEach(r => {
-      if (r.created_at) {
-        const d = new Date(r.created_at);
-        if (d.getFullYear() === currentYear) {
-          const monthStr = months[d.getMonth()];
-          yearlyScopesMap[monthStr] = (yearlyScopesMap[monthStr] || 0) + 1;
-        }
-      }
+    const yearlyScopesMap: Record<number, number> = {};
+    yearlyResult.rows.forEach((r: any) => {
+      yearlyScopesMap[r.month_num] = r.count;
     });
 
-    stats.yearlyScopesData = months.map(month => ({
-      month,
-      scopes: yearlyScopesMap[month] || 0
-    }));
+    const stats: any = {
+      totalScopes: row.totalScopes || 0,
+      approved: row.approved || 0,
+      inReview: row.inReview || 0,
+      inDraft: row.inDraft || 0,
+      rejected: row.rejected || 0,
+      pendingApprovals: row.pendingApprovals || 0,
+      routedForApproval: row.routedForApproval || 0,
+      draftNoDueDate: row.draftNoDueDate || 0,
+      overdueCount: row.overdueCount || 0,
+      mineScopes: row.mineScopes || 0,
+      yearlyScopesData: months.map((month, idx) => ({
+        month,
+        scopes: yearlyScopesMap[idx + 1] || 0
+      }))
+    };
 
     res.status(200).json({ success: true, data: stats });
   } catch (error) {

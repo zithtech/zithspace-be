@@ -33,15 +33,10 @@ export const getTestRuns = async (req: Request, res: Response) => {
     await ensureRunScopeColumn();
 
     let query = `
-      SELECT tr.*, ts.suite_name as suite_name, sc.name as scope_name,
-      (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Pass') as passed_count,
-      (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Fail') as failed_count,
-      (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Blocked') as blocked_count,
-      (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Not Executed') as not_executed_count,
-      (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id) as total_cases
+      SELECT tr.*, ts.suite_name as suite_name, sc.name as scope_name
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
-      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id = ptc.id
       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       WHERE tr.tenant_id = $1
     `;
@@ -57,9 +52,9 @@ export const getTestRuns = async (req: Request, res: Response) => {
           .filter(Boolean);
         if (suiteIds.length > 0) {
           let idx = p.length + 1;
-          const placeholders = suiteIds.map(() => `$${idx++}::text`);
+          const placeholders = suiteIds.map(() => `$${idx++}::uuid`);
           p.push(...suiteIds);
-          queryStr += ` AND tr.suite_id::text IN (${placeholders.join(',')})`;
+          queryStr += ` AND tr.suite_id IN (${placeholders.join(',')})`;
         }
       }
       if (module_id) {
@@ -72,9 +67,9 @@ export const getTestRuns = async (req: Request, res: Response) => {
           const conditions: string[] = [];
           if (validIds.length > 0) {
             let idx = p.length + 1;
-            const placeholders = validIds.map(() => `$${idx++}::text`);
+            const placeholders = validIds.map(() => `$${idx++}::uuid`);
             p.push(...validIds);
-            conditions.push(`(ts.module_id::text IN (${placeholders.join(',')}) OR ptc.module_id::text IN (${placeholders.join(',')}))`);
+            conditions.push(`(ts.module_id IN (${placeholders.join(',')}) OR ptc.module_id IN (${placeholders.join(',')}))`);
           }
           if (hasUnassigned) {
             conditions.push(`((ts.module_id IS NULL AND ptc.module_id IS NULL) OR (ts.module_id::text = '' AND ptc.module_id::text = ''))`);
@@ -90,9 +85,9 @@ export const getTestRuns = async (req: Request, res: Response) => {
           .filter(Boolean);
         if (scopeIds.length > 0) {
           let idx = p.length + 1;
-          const placeholders = scopeIds.map(() => `$${idx++}::text`);
+          const placeholders = scopeIds.map(() => `$${idx++}::uuid`);
           p.push(...scopeIds);
-          queryStr += ` AND tr.scope_id::text IN (${placeholders.join(',')})`;
+          queryStr += ` AND tr.scope_id IN (${placeholders.join(',')})`;
         }
       }
       if (search) {
@@ -123,7 +118,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
       }
       if (project_id) {
         p.push(project_id);
-        queryStr += ` AND ptc.project_id::text = $${p.length}::text`;
+        queryStr += ` AND ptc.project_id = $${p.length}`;
       }
       if (allowed_projects) {
         const ids = (allowed_projects as string)
@@ -132,11 +127,11 @@ export const getTestRuns = async (req: Request, res: Response) => {
           .filter(Boolean);
         if (ids.length > 0) {
           let idx = p.length + 1;
-          const placeholders = ids.map(() => `$${idx++}::text`);
+          const placeholders = ids.map(() => `$${idx++}`);
           p.push(...ids);
           const userId = (req as any).user?.id || null;
           p.push(userId);
-          queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR tr.executed_by::text = $${p.length}::text)`;
+          queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id IN (${placeholders.join(',')}) OR tr.executed_by::text = $${p.length}::text)`;
         }
       }
       return queryStr;
@@ -148,38 +143,47 @@ export const getTestRuns = async (req: Request, res: Response) => {
       SELECT COUNT(*) as count
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
-      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id = ptc.id
       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       WHERE tr.tenant_id = $1
     `;
     const countParams: any[] = [tenantId];
     countQuery = applyFilters(countQuery, countParams, { includeProgress: true });
 
-    let statsQuery = `
+    // Single-pass stats aggregation: avoid 6 correlated subqueries per row across all runs
+    const statsParams: any[] = [tenantId];
+    const filteredRunsBase = applyFilters(
+      `SELECT tr.id
+       FROM qa_test_runs tr
+       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id = ptc.id
+       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
+       WHERE tr.tenant_id = $1`,
+      statsParams,
+      { includeProgress: false }
+    );
+
+    const statsQuery = `
+      WITH filtered_runs AS (
+        ${filteredRunsBase}
+      ),
+      run_totals AS (
+        SELECT 
+          fr.id,
+          COUNT(trr.id) AS total_cases,
+          COUNT(CASE WHEN trr.status != 'Not Executed' THEN 1 END) AS executed_cases
+        FROM filtered_runs fr
+        LEFT JOIN qa_test_run_results trr ON fr.id = trr.test_run_id
+        GROUP BY fr.id
+      )
       SELECT 
         COUNT(*) as total_runs,
-        SUM(CASE 
-            WHEN (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) > 0 
-                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) > 0
-                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) < (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) 
-            THEN 1 ELSE 0 END) as active_runs,
-        SUM(CASE 
-            WHEN (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) > 0 
-                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) >= (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) 
-            THEN 1 ELSE 0 END) as completed_runs,
-        SUM(CASE 
-            WHEN (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) = 0 
-                 OR ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) = 0 
-            THEN 1 ELSE 0 END) as not_started_runs,
-        SUM((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) as total_executed_cases
-      FROM qa_test_runs tr
-      LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
-      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
-      LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
-      WHERE tr.tenant_id = $1
+        SUM(CASE WHEN total_cases > 0 AND executed_cases > 0 AND executed_cases < total_cases THEN 1 ELSE 0 END) as active_runs,
+        SUM(CASE WHEN total_cases > 0 AND executed_cases >= total_cases THEN 1 ELSE 0 END) as completed_runs,
+        SUM(CASE WHEN total_cases = 0 OR executed_cases = 0 THEN 1 ELSE 0 END) as not_started_runs,
+        COALESCE(SUM(executed_cases), 0) as total_executed_cases
+      FROM run_totals
     `;
-    const statsParams: any[] = [tenantId];
-    statsQuery = applyFilters(statsQuery, statsParams, { includeProgress: false });
 
     query += ` ORDER BY tr.created_at DESC`;
     params.push(parsedLimit);
@@ -192,6 +196,35 @@ export const getTestRuns = async (req: Request, res: Response) => {
       pool.query(countQuery, countParams),
       pool.query(statsQuery, statsParams)
     ]);
+
+    // Paginated aggregation: aggregate result counts ONLY for the runs on the current page
+    if (rows.length > 0) {
+      const pageRunIds = rows.map((r: any) => r.id);
+      const countsQuery = `
+        SELECT 
+          trr.test_run_id,
+          COUNT(*) as total_cases,
+          COUNT(CASE WHEN trr.status = 'Pass' THEN 1 END) as passed_count,
+          COUNT(CASE WHEN trr.status = 'Fail' THEN 1 END) as failed_count,
+          COUNT(CASE WHEN trr.status = 'Blocked' THEN 1 END) as blocked_count,
+          COUNT(CASE WHEN trr.status = 'Not Executed' THEN 1 END) as not_executed_count
+        FROM qa_test_run_results trr
+        WHERE trr.test_run_id = ANY($1::uuid[])
+        GROUP BY trr.test_run_id
+      `;
+      const { rows: countResultRows } = await pool.query(countsQuery, [pageRunIds]);
+      const countMap = new Map<string, any>();
+      countResultRows.forEach((c: any) => countMap.set(c.test_run_id, c));
+
+      rows.forEach((r: any) => {
+        const c = countMap.get(r.id);
+        r.passed_count = c ? c.passed_count : '0';
+        r.failed_count = c ? c.failed_count : '0';
+        r.blocked_count = c ? c.blocked_count : '0';
+        r.not_executed_count = c ? c.not_executed_count : '0';
+        r.total_cases = c ? c.total_cases : '0';
+      });
+    }
     const total = parseInt(countRows[0]?.count || '0', 10);
     const totalRuns = parseInt(statsRows[0]?.total_runs || '0', 10);
     const activeRuns = parseInt(statsRows[0]?.active_runs || '0', 10);
